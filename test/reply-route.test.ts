@@ -8,7 +8,7 @@ import { FakeRpc, httpFixture, testToken } from './helpers.js';
 import { replyToolState } from '../src/adapters/codex-readiness.js';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { HarnessHub } from '../src/hub.js';
+import { AgentHub } from '../src/hub.js';
 import { openReceiptStore } from '../src/store.js';
 
 async function fixture(t: test.TestContext, tools: unknown[] = [codexReplyTool]) {
@@ -87,7 +87,7 @@ test('owner HTTP and CLI attachment require acknowledgment and preserve the exac
     address.sessionId,
   ];
   const exec = promisify(execFile),
-    env = { ...process.env, HARNESSHUB_TOKEN: testToken };
+    env = { ...process.env, AGENTHUB_TOKEN: testToken };
   await assert.rejects(exec(process.execPath, args, { env }), /acknowledgment/);
   assert(!rpc.calls.some((r) => r.method === 'thread/resume'));
   const result = JSON.parse(
@@ -149,7 +149,7 @@ test('persisted Codex correlation accepts a late tool reply after explicit attac
   t.after(() => rm(dir, { recursive: true, force: true }));
   const path = join(dir, 'state.sqlite');
   rpc.handlers.set('turn/start', () => ({ turn: { id: 'test-turn' } }));
-  const first = new HarnessHub([adapter], { store: await openReceiptStore(path) });
+  const first = new AgentHub([adapter], { store: await openReceiptStore(path) });
   const message = {
     messageId: randomUUID(),
     to: address,
@@ -161,7 +161,7 @@ test('persisted Codex correlation accepts a late tool reply after explicit attac
   await first.close();
   const next = new FakeRpc();
   next.handlers = new Map(rpc.handlers);
-  const second = new HarnessHub([new CodexAdapter({ rpc: next })], {
+  const second = new AgentHub([new CodexAdapter({ rpc: next })], {
     store: await openReceiptStore(path),
   });
   await second.ready();
@@ -173,7 +173,7 @@ test('persisted Codex correlation accepts a late tool reply after explicit attac
     method: 'item/tool/call',
     params: {
       threadId: address.sessionId,
-      tool: 'harnesshub_reply',
+      tool: 'agenthub_reply',
       arguments: { inReplyTo: message.messageId, text: 'persisted answer' },
     },
   });
@@ -181,7 +181,7 @@ test('persisted Codex correlation accepts a late tool reply after explicit attac
   assert(!next.calls.some((c) => c.method === 'turn/start'));
   assert.equal((next.responses[0] as { result: { success: boolean } }).result.success, true);
   await second.close();
-  const third = new HarnessHub([], { store: await openReceiptStore(path) });
+  const third = new AgentHub([], { store: await openReceiptStore(path) });
   assert.equal((await third.send(message)).reply?.text, 'persisted answer');
   await third.close();
 });

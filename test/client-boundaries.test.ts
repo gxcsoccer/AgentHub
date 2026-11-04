@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { HarnessHubClient } from '../src/client.js';
+import { AgentHubClient } from '../src/client.js';
 import { testAddress } from './helpers.js';
 import { randomUUID } from 'node:crypto';
 
@@ -15,7 +15,7 @@ function streamClient(chunks: Uint8Array[]) {
     },
   });
   return {
-    client: new HarnessHubClient({
+    client: new AgentHubClient({
       baseUrl: 'http://localhost',
       token: 'test',
       fetch: async () => new Response(body),
@@ -29,9 +29,9 @@ test('client forbids nonlocal or credential-bearing URLs and never retries a fai
     'http://external.example',
     'http://user:secret@localhost',
   ])
-    assert.throws(() => new HarnessHubClient({ baseUrl, token: 'test' }), /local HTTP/);
+    assert.throws(() => new AgentHubClient({ baseUrl, token: 'test' }), /local HTTP/);
   let attempts = 0;
-  const client = new HarnessHubClient({
+  const client = new AgentHubClient({
     baseUrl: 'http://localhost',
     token: 'test',
     fetch: async (_url, init) => {
@@ -85,13 +85,13 @@ test('SSE rejects oversized multiline frames but accepts a large chunk containin
 });
 
 test('SSE reports missing body and structured HTTP errors', async () => {
-  const empty = new HarnessHubClient({
+  const empty = new AgentHubClient({
     baseUrl: 'http://localhost',
     token: 'test',
     fetch: async () => new Response(null),
   });
   await assert.rejects(empty.events().next(), /Missing event stream/);
-  const denied = new HarnessHubClient({
+  const denied = new AgentHubClient({
     baseUrl: 'http://localhost',
     token: 'test',
     fetch: async () =>

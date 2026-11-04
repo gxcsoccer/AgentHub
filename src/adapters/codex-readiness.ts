@@ -21,7 +21,7 @@ export async function replyToolState(thread: Json): Promise<ReplyReadiness['tool
     if (row.payload.dynamic_tools == null) return 'missing';
     if (!Array.isArray(row.payload.dynamic_tools)) return 'unknown';
     const tool = row.payload.dynamic_tools.find(
-      (x: Json) => x.type === 'function' && x.name === 'harnesshub_reply',
+      (x: Json) => x.type === 'function' && x.name === 'agenthub_reply',
     );
     if (!tool) return 'missing';
     const schema = tool.inputSchema;

@@ -6,9 +6,9 @@ import { mkdtemp, rm, lstat, writeFile, chmod, symlink } from 'node:fs/promises'
 import { join } from 'node:path';
 import { createConnection, createServer } from 'node:net';
 import { randomUUID } from 'node:crypto';
-import { HarnessHubClient } from '../src/client.js';
+import { AgentHubClient } from '../src/client.js';
 import { openReceiptStore } from '../src/store.js';
-import { HarnessHub } from '../src/hub.js';
+import { AgentHub } from '../src/hub.js';
 import { TestAdapter, testAddress, testToken } from './helpers.js';
 import type { Json } from '../src/types.js';
 
@@ -25,7 +25,7 @@ async function worker(t: test.TestContext, config: Json) {
   t.after(() => stop(child));
   const [message] = await once(child, 'message');
   assert(message.url, JSON.stringify(message));
-  return { child, api: new HarnessHubClient({ baseUrl: message.url, token: testToken }) };
+  return { child, api: new AgentHubClient({ baseUrl: message.url, token: testToken }) };
 }
 async function directory(t: test.TestContext) {
   const dir = await mkdtemp('/tmp/hh-crash-');
@@ -188,7 +188,7 @@ test('unsafe state paths, future schemas and corrupt rows fail closed without ov
   corrupt.prepare('INSERT INTO receipts VALUES (?,?)').run(randomUUID(), '{broken');
   corrupt.close();
   const store = await openReceiptStore(path);
-  assert.throws(() => new HarnessHub([], { store }), /Cannot recover/);
+  assert.throws(() => new AgentHub([], { store }), /Cannot recover/);
   const reopened = await openReceiptStore(path);
   reopened.close();
 });
@@ -196,7 +196,7 @@ test('unsafe state paths, future schemas and corrupt rows fail closed without ov
 test('a failed durable reservation prevents native I/O and leaves the hub unavailable', async (t) => {
   const store = await openReceiptStore(join(await directory(t), 'state.sqlite'));
   const adapter = new TestAdapter(),
-    hub = new HarnessHub([adapter], { store });
+    hub = new AgentHub([adapter], { store });
   await hub.ready();
   t.after(() => hub.close());
   store.save = () => {

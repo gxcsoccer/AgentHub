@@ -1,7 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import { StdioServerTransport } from '@modelcontextprotocol/server/stdio';
 import * as z from 'zod/v4';
-import { HarnessHubClient } from './client.js';
+import { AgentHubClient } from './client.js';
 
 const scope = z.object({
   harness: z.string().min(1),
@@ -34,8 +34,8 @@ async function result(action: () => Promise<unknown>) {
     };
   }
 }
-export function createMcpServer(client: HarnessHubClient, originName = 'HarnessHub MCP') {
-  const server = new McpServer({ name: 'harnesshub', version: '0.1.0' });
+export function createMcpServer(client: AgentHubClient, originName = 'AgentHub MCP') {
+  const server = new McpServer({ name: 'agenthub', version: '0.1.0' });
   const read = { readOnlyHint: true, destructiveHint: false, openWorldHint: false };
   server.registerTool(
     'list_instances',
@@ -123,7 +123,7 @@ export function createMcpServer(client: HarnessHubClient, originName = 'HarnessH
   );
   return server;
 }
-export async function serveMcp(client: HarnessHubClient, originName?: string) {
+export async function serveMcp(client: AgentHubClient, originName?: string) {
   const server = createMcpServer(client, originName);
   await server.connect(new StdioServerTransport());
   return server;

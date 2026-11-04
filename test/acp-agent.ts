@@ -2,7 +2,7 @@ import { agent, ndJsonStream } from '@agentclientprotocol/sdk';
 import { Readable, Writable } from 'node:stream';
 import { randomUUID } from 'node:crypto';
 const pending = new Map<string, () => void>();
-const app = agent({ name: 'harnesshub-test-agent' })
+const app = agent({ name: 'agenthub-test-agent' })
   .onRequest('initialize', () => ({ protocolVersion: 1, agentCapabilities: {}, authMethods: [] }))
   .onRequest('session/new', () => ({ sessionId: randomUUID() }))
   .onRequest('session/prompt', async ({ params, client }) => {

@@ -1,4 +1,4 @@
-# HarnessHub v0.1 design
+# AgentHub v0.1 design
 
 One API across coding harnesses. The library connects to existing processes; it does not resume, restart, or interrupt them implicitly.
 
@@ -26,7 +26,7 @@ The store uses Node native SQLite (Node >=22.13), full synchronous commits, a sc
 
 The daemon binds to loopback and requires a private bearer token. Browser origins are rejected. Claude callback sockets use random names and private file modes; only callbacks from expected addresses and outstanding message IDs are processed. Node does not authenticate a kernel peer PID for inbound callbacks; same-OS-user processes are the local trust boundary. Claude's recorded verifiedPeerPid identifies the Hub process, not the original remote author.
 
-Existing Claude sockets stay untouched. Existing sessions retain their inbound policy; the adapter never changes accept/hold/refuse, permissions, or configuration. Codex reply capture requires the `harnesshub_reply` dynamic tool registered by the session owner and a native thread listener on this connection. `turn/start` does not install or restore that listener. A real disconnect test confirmed that transport reconnection alone cannot guarantee correlated replies. Read-only readiness uses local persisted tool registration plus this connection's observed listener. Owners can explicitly attach verified loaded roots using thread/resume without config overrides, acknowledging the check-to-resume unload race. No automatic attach or arbitrary live tool registration is provided. The transport epoch invalidates readiness on disconnect. Other approvals remain with their owner.
+Existing Claude sockets stay untouched. Existing sessions retain their inbound policy; the adapter never changes accept/hold/refuse, permissions, or configuration. Codex reply capture requires the `agenthub_reply` dynamic tool registered by the session owner and a native thread listener on this connection. `turn/start` does not install or restore that listener. A real disconnect test confirmed that transport reconnection alone cannot guarantee correlated replies. Read-only readiness uses local persisted tool registration plus this connection's observed listener. Owners can explicitly attach verified loaded roots using thread/resume without config overrides, acknowledging the check-to-resume unload race. No automatic attach or arbitrary live tool registration is provided. The transport epoch invalidates readiness on disconnect. Other approvals remain with their owner.
 
 ## Verification
 

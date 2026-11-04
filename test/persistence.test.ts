@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { HarnessHub } from '../src/hub.js';
+import { AgentHub } from '../src/hub.js';
 import { openReceiptStore } from '../src/store.js';
 import { TestAdapter, testAddress } from './helpers.js';
 import { openLocalHub } from '../src/runtime.js';
@@ -24,7 +24,7 @@ async function directory(t: test.TestContext) {
 test('durable receipts deduplicate across restart and retain payload conflicts', async (t) => {
   const path = await directory(t),
     first = new TestAdapter();
-  const hub = new HarnessHub([first], { store: await openReceiptStore(path) });
+  const hub = new AgentHub([first], { store: await openReceiptStore(path) });
   await hub.ready();
   const message = input();
   await hub.send(message);
@@ -35,7 +35,7 @@ test('durable receipts deduplicate across restart and retain payload conflicts',
   });
   await hub.close();
   const second = new TestAdapter(),
-    restored = new HarnessHub([second], { store: await openReceiptStore(path) });
+    restored = new AgentHub([second], { store: await openReceiptStore(path) });
   t.after(() => restored.close());
   await restored.ready();
   assert.equal((await restored.send(message)).reply?.text, 'answer');
@@ -57,7 +57,7 @@ test('a reserved or dispatching receipt becomes unknown on recovery and is never
     return { status: 'accepted' };
   };
   const store = await openReceiptStore(path),
-    hub = new HarnessHub([adapter], { store });
+    hub = new AgentHub([adapter], { store });
   await hub.ready();
   const m = input(),
     sending = hub.send(m);
@@ -72,7 +72,7 @@ test('a reserved or dispatching receipt becomes unknown on recovery and is never
   crashed.save(snapshot);
   crashed.close();
   const next = new TestAdapter(),
-    recovered = new HarnessHub([next], { store: await openReceiptStore(path) });
+    recovered = new AgentHub([next], { store: await openReceiptStore(path) });
   t.after(() => recovered.close());
   await recovered.ready();
   assert.equal(recovered.receipt(m.messageId).status, 'unknown');
@@ -93,7 +93,7 @@ test('a saved reply route resumes an unreserved forward once, preserving its mes
   const path = await directory(t),
     a = new TestAdapter();
   const store = await openReceiptStore(path),
-    hub = new HarnessHub([a], { store });
+    hub = new AgentHub([a], { store });
   await hub.ready();
   const m = { ...input(), replyTo: testAddress };
   await hub.send(m);
@@ -109,14 +109,14 @@ test('a saved reply route resumes an unreserved forward once, preserving its mes
   seed.save(rows);
   seed.close();
   const b = new TestAdapter(),
-    recovered = new HarnessHub([b], { store: await openReceiptStore(path) });
+    recovered = new AgentHub([b], { store: await openReceiptStore(path) });
   await recovered.ready();
   await new Promise((r) => setImmediate(r));
   assert.equal(b.calls.length, 1);
   assert.equal(b.calls[0]?.messageId, row.receipt.forwardedMessageId);
   await recovered.close();
   const c = new TestAdapter(),
-    again = new HarnessHub([c], { store: await openReceiptStore(path) });
+    again = new AgentHub([c], { store: await openReceiptStore(path) });
   t.after(() => again.close());
   await again.ready();
   assert.equal(c.calls.length, 0);
@@ -128,7 +128,7 @@ test('transaction rollback preserves the prior receipt, and expiry removes its c
   const path = await directory(t),
     store = await openReceiptStore(path),
     adapter = new TestAdapter();
-  const hub = new HarnessHub([adapter], { store, receiptTtlMs: 1000 });
+  const hub = new AgentHub([adapter], { store, receiptTtlMs: 1000 });
   await hub.ready();
   const m = input();
   await hub.send(m);
@@ -148,7 +148,7 @@ test('transaction rollback preserves the prior receipt, and expiry removes its c
   const next = await openReceiptStore(path);
   next.save(rows);
   next.close();
-  const expired = new HarnessHub([], { store: await openReceiptStore(path) });
+  const expired = new AgentHub([], { store: await openReceiptStore(path) });
   await expired.ready();
   assert.throws(() => expired.receipt(m.messageId), /expired/);
   await expired.close();
@@ -167,7 +167,7 @@ test('opening with invalid configuration or a close-time disk failure still rele
     await gate;
     return { status: 'accepted' };
   };
-  const hub = new HarnessHub([adapter], { store });
+  const hub = new AgentHub([adapter], { store });
   await hub.ready();
   const sending = hub.send(input());
   await new Promise((r) => setImmediate(r));
@@ -181,4 +181,41 @@ test('opening with invalid configuration or a close-time disk failure still rele
   await recovered.close();
   const ephemeral = await openLocalHub({ codex: false, claude: false }, { stateFile: false });
   await ephemeral.close();
+});
+
+test('revoked caller grants block a persisted reply-forward intent before backend access', async (t) => {
+  const path = await directory(t),
+    a = new TestAdapter(),
+    store = await openReceiptStore(path);
+  const policy = { id: 'caller', grants: [{ ...testAddress, operations: ['send'] as const }] };
+  const hub = new AgentHub([a], {
+    store,
+    callers: [
+      { ...policy, grants: policy.grants.map((g) => ({ ...g, operations: [...g.operations] })) },
+    ],
+  });
+  const m = { ...input(), replyTo: testAddress };
+  await hub.send(m, 'caller');
+  const saved = store.load();
+  saved[0]!.receipt.status = 'replied';
+  saved[0]!.receipt.reply = { text: 'reply' };
+  saved[0]!.receipt.forwardedMessageId = randomUUID();
+  saved[0]!.forwardState = 'ready';
+  await hub.close();
+  const seed = await openReceiptStore(path);
+  seed.save(saved);
+  seed.close();
+  const next = new TestAdapter();
+  let reads = 0;
+  next.getSession = async (a) => {
+    reads++;
+    return new TestAdapter().getSession(a);
+  };
+  const restored = new AgentHub([next], { store: await openReceiptStore(path), callers: [] });
+  t.after(() => restored.close());
+  await restored.ready();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(next.calls.length, 0);
+  assert.equal(reads, 0);
+  assert.match(restored.receipt(m.messageId).forwardError!, /authorized/);
 });

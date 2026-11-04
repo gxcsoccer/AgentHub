@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { HarnessHub } from '../src/hub.js';
+import { AgentHub } from '../src/hub.js';
 import { TestAdapter, testAddress } from './helpers.js';
 test('full-text cursor binds caller, target and query, with bounded empty pages', async (t) => {
   const a = new TestAdapter();
@@ -20,7 +20,7 @@ test('full-text cursor binds caller, target and query, with bounded empty pages'
       nextCursor: offset < 15 ? String(offset + 1) : null,
     };
   };
-  const hub = new HarnessHub([a], {
+  const hub = new AgentHub([a], {
     callers: [
       { id: 'a', grants: [{ ...testAddress, operations: ['read'] }] },
       { id: 'b', grants: [{ ...testAddress, operations: ['read'] }] },

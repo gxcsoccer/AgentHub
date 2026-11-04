@@ -167,7 +167,7 @@ const schemas = {
 export const openApi = {
   openapi: '3.1.0',
   info: {
-    title: 'HarnessHub',
+    title: 'AgentHub',
     version: '0.1.0',
     description:
       'Local session communication. Explicit native semantics; no implicit resume, user-input fallback, or automatic write retry.',

@@ -9,15 +9,15 @@ npm ci
 npm run check
 ```
 
-当前包含 91 项 HarnessHub 测试与原 Codex Session Bridge 的 41 项测试，共 132 项通过，并执行格式、严格 TypeScript 和覆盖率门槛检查。原 Bridge 从自己的目录运行测试，保留其原始路径与契约。
+当前包含 93 项 AgentHub 测试与原 Codex Session Bridge 的 41 项测试，共 134 项通过，并执行格式、严格 TypeScript 和覆盖率门槛检查。原 Bridge 从自己的目录运行测试，保留其原始路径与契约。
 
 新增测试覆盖：并发幂等、容量/过期、载荷冲突、不确定投递、提前/迟到回复、有限回复转发、关闭竞态、Codex 工具输出与显式审批、Claude 本地 socket 协议和反向回调、策略控制帧、损坏/过期回调、历史大小和游标变化、认证/Origin、非法 HTTP 请求、全部 JSON CLI 命令、真实 stdio 子进程中的七个 MCP 工具、SSE 慢消费者/CRLF/多行数据以及 OpenAPI 一致性。
 
-Node 25.9.0 的 V8 统计显示，新代码编译产物 `dist/src/**/*.js` 的行覆盖率为 96.39%、分支 87.04%、函数 93.92%，不含原 Bridge 和真实 smoke 脚本。`npm run test:coverage` 强制总体门槛 90%/80%/85%，已纳入 check 和 CI。覆盖率不能证明穷尽行为或真实兼容。本轮测试发现并修复了非法 URL 返回 500、SSE 结束后继续写入、CRLF/数据块解析错误、构造失败遗留监听器和非 Error 异常处理问题。
+Node 25.9.0 的 V8 统计显示，新代码编译产物 `dist/src/**/*.js` 的行覆盖率为 96.40%、分支 87.17%、函数 93.92%，不含原 Bridge 和真实 smoke 脚本。`npm run test:coverage` 强制总体门槛 90%/80%/85%，已纳入 check 和 CI。覆盖率不能证明穷尽行为或真实兼容。本轮测试发现并修复了非法 URL 返回 500、SSE 结束后继续写入、CRLF/数据块解析错误、构造失败遗留监听器和非 Error 异常处理问题。
 
 新增测试覆盖 SQLite 事务回滚、保留期、损坏/schema/路径拒绝、写盘失败、单实例锁、HTTP/CLI 显式 attach 和保守的工具就绪判断。独立测试子进程在原消息提交、回复转发提交时被实际 SIGKILL，验证锁释放、不重发不确定消息、固定 ID 保留，以及模拟 Claude 迟到回复重新绑定原 socket 后只转发一次。
 
-适配器单元测试使用假对端或 RPC，不代表真实模型已收到消息。完整检查已在本机 Node 22.23.2 和 25.9.0 上通过。CI 配置覆盖 Linux/macOS、Node 22/24，不使用真实凭证或执行模型测试；本轮尚未验证远端 CI、Linux 和 Node 24 的运行结果。
+适配器单元测试使用假对端或 RPC，不代表真实模型已收到消息。完整检查已在本机 Node 22.23.2 和 25.9.0 上通过。CI 配置覆盖 Linux/macOS、Node 22/24，不使用真实凭证或执行模型测试；首个远端 CI 已通过 Linux／macOS Node 22／24 完整检查、Windows Node 22／24 的 11 项可移植测试及 Linux 合成负载检查；改名后的最终提交会再次检查。
 
 ## 真实跨 harness 验证
 
@@ -35,7 +35,7 @@ Node 25.9.0 的 V8 统计显示，新代码编译产物 `dist/src/**/*.js` 的�
 2. 向 Codex 发送工具输出；Codex 调用会话所有者注册的测试委派工具。
 3. 经原生 inbox 将消息发送给 Claude。
 4. Claude 用原生 `SendMessage` 回复 Hub 回调 socket。
-5. Hub 将关联回复作为工具输出转发给 Codex；Codex 通过 `harnesshub_reply` 确认。
+5. Hub 将关联回复作为工具输出转发给 Codex；Codex 通过 `agenthub_reply` 确认。
 6. 检查消息 ID、内容与历史身份：Codex 没有用户输入注入，Claude 保存 peer 来源。
 7. 停止本次 Claude 进程，归档并确认卸载本次 Codex thread，删除临时工作目录。
 
@@ -109,3 +109,5 @@ smoke:claude-initiated -- --run 通过五项检查：真实 Claude 模型主动�
 新增自动测试覆盖调用方发现／历史／回执／SSE／审批隔离、私有凭证文件、事件 schema 迁移与原子回滚、全文扫描，以及官方 ACP SDK 与真实 fixture 子进程互通。fixture 不是 coding 模型；Windows pipe 测试也不等于原生 Claude 模型收件。详见[扩展边界](EXTENSIONS.zh-CN.md)。
 
 120 秒合成负载通过：3,352 次 HTTP 提交、442 次重复提交核验、23 次 SQLite／服务重开；原生提交次数与唯一请求一致，事件游标跨重启保留。GC 后堆增长约 3.7 MiB、RSS 增长约 69.4 MiB，活动资源始终为 4。这是有界负载验收，不代表长期生产稳定性。更长运行和远端 CI 完成后单独记录。
+
+十分钟合成负载通过：16,432 次唯一提交、2,168 次重复核验、114 次服务／SQLite 重开；原生提交次数没有增加，文件描述符始终为 21，GC 后堆增长约 4.04 MiB，RSS 增长约 89.69 MiB，均在脚本阈值内。私有报告 .local/verification/soak.json。不是十分钟真实模型负载，也不证明更长时间运行无泄漏。

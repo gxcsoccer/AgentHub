@@ -7,7 +7,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
 import { EventLog } from '../src/events.js';
 import { openReceiptStore } from '../src/store.js';
-import { HarnessHub } from '../src/hub.js';
+import { AgentHub } from '../src/hub.js';
 import { TestAdapter, testAddress } from './helpers.js';
 async function fixture(t: test.TestContext) {
   const dir = await mkdtemp(join(tmpdir(), 'hh-events-'));
@@ -42,7 +42,7 @@ test('receipt and evidence commit atomically; failed writes cannot dispatch', as
   const file = await fixture(t),
     store = await openReceiptStore(file),
     adapter = new TestAdapter();
-  const hub = new HarnessHub([adapter], { store });
+  const hub = new AgentHub([adapter], { store });
   await hub.ready();
   const cursor = hub.events.cursor;
   const input = {
@@ -62,7 +62,7 @@ test('receipt and evidence commit atomically; failed writes cannot dispatch', as
   await hub.close();
   const next = await openReceiptStore(file);
   t.after(() => next.close());
-  assert.equal(next.loadEvents!(), undefined);
+  assert.equal(next.loadEvents!()?.events.length, 0);
 });
 test('schema 1 upgrades without dropping receipts, while corrupt checkpoints fail closed', async (t) => {
   const file = await fixture(t),
@@ -81,4 +81,17 @@ test('schema 1 upgrades without dropping receipts, while corrupt checkpoints fai
   const broken = await openReceiptStore(file);
   t.after(() => broken.close());
   assert.throws(() => new EventLog(broken), /gap/);
+});
+
+test('an empty durable event cursor remains valid across restarts', async (t) => {
+  const path = await fixture(t),
+    store = await openReceiptStore(path),
+    log = new EventLog(store);
+  const cursor = log.cursor;
+  store.close();
+  const restoredStore = await openReceiptStore(path);
+  t.after(() => restoredStore.close());
+  const restored = new EventLog(restoredStore);
+  assert.equal(restored.cursor, cursor);
+  assert.deepEqual(restored.replay(cursor), []);
 });

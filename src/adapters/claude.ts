@@ -372,7 +372,7 @@ export class ClaudeAdapter extends EventEmitter implements Adapter {
       priority: 'next',
       message: {
         role: 'user',
-        content: `<cross-session-message from="uds:${callback.path}" from-name="HarnessHub" from-mode="prompting">\n${payload}\n</cross-session-message>`,
+        content: `<cross-session-message from="uds:${callback.path}" from-name="AgentHub" from-mode="prompting">\n${payload}\n</cross-session-message>`,
       },
     };
     await new Promise<void>((resolve, reject) => {

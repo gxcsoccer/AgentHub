@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { HarnessHub } from '../src/hub.js';
+import { AgentHub } from '../src/hub.js';
 import { TestAdapter, testAddress } from './helpers.js';
 import { createLocalHub } from '../src/runtime.js';
 import type { MessageInput } from '../src/types.js';
@@ -16,7 +16,7 @@ const input = (): MessageInput => ({
 test('capacity retains pending submissions and expiry frees completed receipts', async (t) => {
   t.mock.timers.enable({ apis: ['Date'] });
   const adapter = new TestAdapter();
-  const hub = new HarnessHub([adapter], { receiptCapacity: 1, receiptTtlMs: 100 });
+  const hub = new AgentHub([adapter], { receiptCapacity: 1, receiptTtlMs: 100 });
   t.after(() => hub.close());
   let release!: () => void;
   const gate = new Promise<void>((resolve) => {
@@ -42,7 +42,7 @@ test('capacity retains pending submissions and expiry frees completed receipts',
 
 test('invalid inputs and unknown instances never reach an adapter', async (t) => {
   const adapter = new TestAdapter();
-  const hub = new HarnessHub([adapter]);
+  const hub = new AgentHub([adapter]);
   t.after(() => hub.close());
   const invalid = [
     null,
@@ -68,7 +68,7 @@ test('foreign and malformed callbacks cannot complete a message; snapshots are i
   const a = new TestAdapter(),
     b = new TestAdapter();
   b.instance = 'other';
-  const hub = new HarnessHub([a, b]);
+  const hub = new AgentHub([a, b]);
   t.after(() => hub.close());
   const m = input();
   await hub.send(m);
@@ -92,7 +92,7 @@ test('foreign and malformed callbacks cannot complete a message; snapshots are i
 
 test('forwarding records failure and hop exhaustion without retry or reply loops', async (t) => {
   const a = new TestAdapter();
-  const hub = new HarnessHub([a]);
+  const hub = new AgentHub([a]);
   t.after(() => hub.close());
   for (const mode of ['failed', 'unknown', 'unsupported', 'hop']) {
     const m = { ...input(), replyTo: testAddress, hopCount: mode === 'hop' ? 8 : 0 };
@@ -117,7 +117,7 @@ test('forwarding records failure and hop exhaustion without retry or reply loops
 test('poll timeout preserves uncertainty and a later reply is observable', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const a = new TestAdapter();
-  const hub = new HarnessHub([a]);
+  const hub = new AgentHub([a]);
   t.after(() => hub.close());
   const m = input();
   await hub.send(m);
@@ -150,13 +150,13 @@ test('runtime configuration is strict and supports explicitly disabled and multi
   assert.equal(defaults.instances().length, 2);
   await defaults.close();
   const a = new TestAdapter();
-  assert.throws(() => new HarnessHub([a, a]), /Duplicate/);
+  assert.throws(() => new AgentHub([a, a]), /Duplicate/);
   assert.equal(a.listenerCount('update'), 0);
 });
 
 test('non-Error adapter failures still produce stable failed receipts without retries', async (t) => {
   const adapter = new TestAdapter(),
-    hub = new HarnessHub([adapter]);
+    hub = new AgentHub([adapter]);
   t.after(() => hub.close());
   for (const error of [null, undefined, 'plain failure']) {
     adapter.send = async () => {

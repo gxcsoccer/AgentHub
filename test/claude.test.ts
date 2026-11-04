@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { once } from 'node:events';
 import { ClaudeAdapter } from '../src/adapters/claude.js';
 import { readClaudeHistory } from '../src/adapters/claude-history.js';
-import { HarnessHub } from '../src/hub.js';
+import { AgentHub } from '../src/hub.js';
 import type { Json } from '../src/types.js';
 
 async function push(path: string, frame: unknown) {
@@ -64,7 +64,7 @@ async function fixture(t: test.TestContext, policy = 'accept') {
     version: async () => '2.1.318',
     discover: async () => [{ sessionId: id, pid: process.pid, status: 'idle', socketPath: inbox }],
   });
-  const hub = new HarnessHub([adapter]);
+  const hub = new AgentHub([adapter]);
   t.after(async () => {
     await hub.close();
     await new Promise<void>((resolve) => native.close(() => resolve()));

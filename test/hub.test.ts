@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
-import { HarnessHub } from '../src/hub.js';
+import { AgentHub } from '../src/hub.js';
 import type { Adapter, Envelope, SessionAddress } from '../src/types.js';
 
 const address: SessionAddress = { harness: 'claude', instance: 'local', sessionId: 'native:id' };
@@ -41,7 +41,7 @@ function input(messageId = randomUUID()) {
 
 test('concurrent duplicate submissions share an attempt; conflicts never send', async () => {
   const adapter = new FakeAdapter();
-  const hub = new HarnessHub([adapter]);
+  const hub = new AgentHub([adapter]);
   const message = input();
   const [a, b] = await Promise.all([hub.send(message), hub.send(message)]);
   assert.equal(adapter.calls.length, 1);
@@ -51,7 +51,7 @@ test('concurrent duplicate submissions share an attempt; conflicts never send', 
 });
 test('an early correlated reply is not overwritten by a later transport acknowledgement', async () => {
   const adapter = new FakeAdapter();
-  const hub = new HarnessHub([adapter]);
+  const hub = new AgentHub([adapter]);
   adapter.send = async (message) => {
     adapter.emit('update', {
       messageId: message.messageId,
@@ -67,7 +67,7 @@ test('an early correlated reply is not overwritten by a later transport acknowle
 });
 test('uncertain delivery is retained and repeated IDs never resubmit', async () => {
   const adapter = new FakeAdapter();
-  const hub = new HarnessHub([adapter]);
+  const hub = new AgentHub([adapter]);
   adapter.send = async (message) => {
     adapter.calls.push(message);
     throw Object.assign(new Error('disconnected'), { deliveryUnknown: true });
@@ -80,7 +80,7 @@ test('uncertain delivery is retained and repeated IDs never resubmit', async () 
 });
 test('delivery semantics and expiry are validated before submission', async () => {
   const adapter = new FakeAdapter();
-  const hub = new HarnessHub([adapter]);
+  const hub = new AgentHub([adapter]);
   await assert.rejects(hub.send({ ...input(), delivery: 'tool_output' }), /does not support/);
   await assert.rejects(hub.send({ ...input(), expiresAt: new Date(0).toISOString() }), /expired/);
   assert.equal(adapter.calls.length, 0);
@@ -88,7 +88,7 @@ test('delivery semantics and expiry are validated before submission', async () =
 });
 test('reply forwarding is explicit and forwards at most once without creating a reply loop', async () => {
   const adapter = new FakeAdapter();
-  const hub = new HarnessHub([adapter]);
+  const hub = new AgentHub([adapter]);
   const message = input();
   await hub.send({ ...message, replyTo: address });
   adapter.emit('update', {
@@ -109,7 +109,7 @@ test('reply forwarding is explicit and forwards at most once without creating a 
 });
 test('closing the hub releases pending receipt waiters', async () => {
   const adapter = new FakeAdapter();
-  const hub = new HarnessHub([adapter]);
+  const hub = new AgentHub([adapter]);
   const message = input();
   await hub.send(message);
   const waiting = hub.wait(message.messageId, 60000);
@@ -118,7 +118,7 @@ test('closing the hub releases pending receipt waiters', async () => {
 });
 test('late delivery evidence resolves unknown without regressing a reply', async () => {
   const adapter = new FakeAdapter();
-  const hub = new HarnessHub([adapter]);
+  const hub = new AgentHub([adapter]);
   const message = input();
   await hub.send(message);
   adapter.emit('update', { messageId: message.messageId, status: 'unknown' });
@@ -145,7 +145,7 @@ test('closing during session lookup prevents a subsequent native send', async ()
     await gate;
     return lookup(a);
   };
-  const hub = new HarnessHub([adapter]);
+  const hub = new AgentHub([adapter]);
   const sending = hub.send(input());
   await hub.close();
   release();
@@ -155,7 +155,7 @@ test('closing during session lookup prevents a subsequent native send', async ()
 
 test('receipt expiry during long polling rejects without an uncaught timer error', async (t) => {
   t.mock.timers.enable({ apis: ['Date', 'setTimeout'] });
-  const hub = new HarnessHub([new FakeAdapter()], { receiptTtlMs: 1000 });
+  const hub = new AgentHub([new FakeAdapter()], { receiptTtlMs: 1000 });
   const message = input();
   await hub.send(message);
   const waiting = hub.wait(message.messageId, 2000);

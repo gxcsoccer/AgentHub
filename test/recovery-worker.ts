@@ -1,5 +1,5 @@
 // A separate process is required to test OS lock release and stale UDS recovery.
-import { HarnessHub } from '../src/hub.js';
+import { AgentHub } from '../src/hub.js';
 import { openReceiptStore } from '../src/store.js';
 import { createHubServer } from '../src/server.js';
 import { ClaudeAdapter } from '../src/adapters/claude.js';
@@ -29,7 +29,7 @@ const adapters = [
       ]
     : []),
 ];
-const hub = new HarnessHub(adapters, { store: await openReceiptStore(config.path) });
+const hub = new AgentHub(adapters, { store: await openReceiptStore(config.path) });
 await hub.ready();
 const app = createHubServer({ hub, token: testToken });
 app.server.listen(0, '127.0.0.1');

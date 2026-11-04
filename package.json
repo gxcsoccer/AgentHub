@@ -1,5 +1,5 @@
 {
-  "name": "harnesshub",
+  "name": "agenthub",
   "version": "0.1.0",
   "description": "One API across coding harnesses: existing sessions, messages and explicit delivery semantics.",
   "type": "module",
@@ -8,7 +8,7 @@
     "node": ">=22.13"
   },
   "bin": {
-    "harnesshub": "dist/src/cli.js",
+    "agenthub": "dist/src/cli.js",
     "codex-session-bridge": "dist/vendor/codex-bridge/src/cli.js"
   },
   "exports": {
@@ -61,7 +61,8 @@
     "smoke:recovery": "npm run build && node scripts/smoke-recovery.mjs",
     "smoke:doctor": "npm run build && node scripts/smoke-doctor-readonly.mjs",
     "smoke:claude-initiated": "npm run build && node scripts/smoke-claude-initiated.mjs",
-    "test:soak": "npm run build && node --expose-gc scripts/soak.mjs --seconds 30"
+    "test:soak": "npm run build && node --expose-gc scripts/soak.mjs --seconds 30",
+    "test:package": "node scripts/verify-package.mjs"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "2.4.0",
@@ -78,11 +79,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/gxcsoccer/HarnessHub.git"
+    "url": "git+https://github.com/gxcsoccer/AgentHub.git"
   },
-  "homepage": "https://github.com/gxcsoccer/HarnessHub#readme",
+  "homepage": "https://github.com/gxcsoccer/AgentHub#readme",
   "bugs": {
-    "url": "https://github.com/gxcsoccer/HarnessHub/issues"
+    "url": "https://github.com/gxcsoccer/AgentHub/issues"
   },
   "publishConfig": {
     "registry": "https://registry.npmjs.org",

@@ -20,7 +20,7 @@ export class HubApiError extends Error {
     this.name = 'HubApiError';
   }
 }
-export class HarnessHubClient {
+export class AgentHubClient {
   private readonly base: URL;
   constructor(
     private readonly options: {
@@ -42,7 +42,7 @@ export class HarnessHubClient {
       this.base.username ||
       this.base.password
     )
-      throw new Error('HarnessHub client requires a local HTTP URL');
+      throw new Error('AgentHub client requires a local HTTP URL');
   }
   private url(path: string, query: object = {}): URL {
     const url = new URL(path, this.base);

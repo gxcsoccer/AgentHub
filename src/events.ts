@@ -49,6 +49,8 @@ export class EventLog extends EventEmitter {
         sequence: Number(event.id.split(':')[1]),
       }));
       this.bytes = this.entries.reduce((n, e) => n + e.size, 0);
+    } else if (store?.appendEvent) {
+      store.setMeta('events:state', { epoch: this.epoch, sequence: 0, dropped: 0 });
     }
   }
   get cursor() {

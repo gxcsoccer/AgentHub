@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { setTimeout as delay } from 'node:timers/promises';
 import { AcpAdapter } from '../src/adapters/acp.js';
-import { HarnessHub } from '../src/hub.js';
+import { AgentHub } from '../src/hub.js';
 import { httpFixture } from './helpers.js';
 const adapter = () =>
   new AcpAdapter({
@@ -53,7 +53,7 @@ test('managed ACP is lazy, explicit user input, isolated and roundtrips through 
 });
 test('ACP permissions time out denied; explicit selected options are validated; cancellation remains an owner operation', async (t) => {
   const a = adapter(),
-    hub = new HarnessHub([a]);
+    hub = new AgentHub([a]);
   t.after(() => hub.close());
   const s = await hub.createSession(a, tmpdir());
   const denied = await hub.prompt(message(s.address, 'permission'));
@@ -77,7 +77,7 @@ test('ACP permissions time out denied; explicit selected options are validated; 
 });
 test('ACP disconnect becomes unknown and does not launch a replacement agent', async (t) => {
   const a = adapter(),
-    hub = new HarnessHub([a]);
+    hub = new AgentHub([a]);
   t.after(() => hub.close());
   const s = await hub.createSession(a, tmpdir());
   const m = message(s.address, 'disconnect');
@@ -87,7 +87,7 @@ test('ACP disconnect becomes unknown and does not launch a replacement agent', a
 });
 test('send permission cannot become prompt or session creation permission', async (t) => {
   const a = adapter(),
-    hub = new HarnessHub([a], {
+    hub = new AgentHub([a], {
       callers: [
         {
           id: 'agent',

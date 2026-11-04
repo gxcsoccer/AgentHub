@@ -1,4 +1,4 @@
-import type { HarnessHubClient } from './client.js';
+import type { AgentHubClient } from './client.js';
 import type { Json, SessionAddress, SessionInfo } from './types.js';
 
 type Scope = Pick<SessionAddress, 'harness' | 'instance'>;
@@ -22,7 +22,7 @@ export interface DoctorReport {
   status: DiagnosticCheck['status'];
   checks: DiagnosticCheck[];
 }
-type Reader = Pick<HarnessHubClient, 'instances' | 'listSessions' | 'getSession'>;
+type Reader = Pick<AgentHubClient, 'instances' | 'listSessions' | 'getSession'>;
 const hints: Record<string, string> = {
   unauthorized: 'Use the existing daemon owner token; credentials were not created or changed.',
   storage_unavailable:

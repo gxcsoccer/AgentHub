@@ -114,7 +114,7 @@ export class ClaudePipeAdapter extends EventEmitter implements Adapter {
     if (message.delivery !== 'peer_message')
       throw new HubError('unsupported_delivery', 'Claude requires peer_message', 422);
     const s = this.binding(message.to),
-      from = `uds:\\\\.\\pipe\\harnesshub-no-callback-${randomUUID()}`;
+      from = `uds:\\\\.\\pipe\\agenthub-no-callback-${randomUUID()}`;
     const payload = JSON.stringify({
       message,
       reply: null,
@@ -132,7 +132,7 @@ export class ClaudePipeAdapter extends EventEmitter implements Adapter {
       priority: 'next',
       message: {
         role: 'user',
-        content: `<cross-session-message from="${from}" from-name="HarnessHub" from-mode="prompting">\n${payload}\n</cross-session-message>`,
+        content: `<cross-session-message from="${from}" from-name="AgentHub" from-mode="prompting">\n${payload}\n</cross-session-message>`,
       },
     };
     await writeAuthenticatedPipe(

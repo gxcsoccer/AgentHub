@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { authenticator, type CallerCredential } from './access.js';
 import type { HubEvent } from './events.js';
-import { HarnessHub } from './hub.js';
+import { AgentHub } from './hub.js';
 import {
   address,
   addressKey,
@@ -15,7 +15,7 @@ import { openApi } from './openapi.js';
 import type { Json, MessageInput } from './types.js';
 
 export function createHubServer(options: {
-  hub: HarnessHub;
+  hub: AgentHub;
   token: string;
   allowedOrigins?: string[];
   callers?: CallerCredential[];

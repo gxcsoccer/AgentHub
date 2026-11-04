@@ -10,10 +10,10 @@ import { homedir } from 'node:os';
 import { once } from 'node:events';
 import { CodexRpc } from '../dist/vendor/codex-bridge/src/rpc.js';
 import {
-  HarnessHub,
+  AgentHub,
   CodexAdapter,
   ClaudeAdapter,
-  HarnessHubClient,
+  AgentHubClient,
   createHubServer,
 } from '../dist/src/index.js';
 
@@ -56,7 +56,7 @@ const codex = new CodexAdapter({ rpc }),
 codex.send = claude.send = async () => {
   throw Error('Delivery forbidden in read-only diagnostic acceptance');
 };
-const hub = new HarnessHub([codex, claude]),
+const hub = new AgentHub([codex, claude]),
   token = randomUUID() + randomUUID();
 const app = createHubServer({ hub, token });
 const exec = promisify(execFile);
@@ -65,7 +65,7 @@ try {
   app.server.listen(0, '127.0.0.1');
   await once(app.server, 'listening');
   const baseUrl = `http://127.0.0.1:${app.server.address().port}`,
-    client = new HarnessHubClient({ baseUrl, token });
+    client = new AgentHubClient({ baseUrl, token });
   const run = async (name, args = []) => {
     const result = await exec(
       process.execPath,
@@ -76,7 +76,7 @@ try {
         baseUrl,
         ...args,
       ],
-      { env: { ...process.env, HARNESSHUB_TOKEN: token }, timeout: 60000 },
+      { env: { ...process.env, AGENTHUB_TOKEN: token }, timeout: 60000 },
     ).catch((error) => {
       if (typeof error.code === 'number' && [1, 2].includes(error.code) && error.stdout)
         return { stdout: error.stdout, code: error.code };

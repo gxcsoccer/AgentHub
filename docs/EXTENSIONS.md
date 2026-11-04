@@ -29,7 +29,7 @@ Omitting `sessions` grants the whole instance. Empty lists grant no sessions. Op
 
 The HTTP server binds the caller from its token, ignoring client claims about caller identity. Receipts and idempotency IDs belong to their creator; the owner can inspect all. Restricted SSE streams contain only that caller's receipt events for currently permitted targets. Raw adapter events are owner-only. `replyTo` requires send access to both endpoints, including when forwarding after restart. Update policy and restart the daemon to revoke access. Already submitted backend work is not cancelled by revocation. The shared opaque event cursor exposes stream progression, not other callers' content. This is local access control, not isolation from another process running as the same OS account.
 
-Library setup passes policies in `new HarnessHub(adapters, { callers })` and credentials separately in `createHubServer({ hub, token, callers })`. Trusted in-process calls default to the owner; this is not a sandbox for untrusted code in the same process. Each MCP process should receive its own restricted token.
+Library setup passes policies in `new AgentHub(adapters, { callers })` and credentials separately in `createHubServer({ hub, token, callers })`. Trusted in-process calls default to the owner; this is not a sandbox for untrusted code in the same process. Each MCP process should receive its own restricted token.
 
 ## Durable events
 
@@ -43,7 +43,7 @@ Each request scans at most ten native history pages. An empty result with a cont
 
 ## ACP v1 managed sessions
 
-HarnessHub uses official `@agentclientprotocol/sdk` 2.4.0, stable ACP v1. A configured command is launched only by explicit session creation, using `spawn` without a shell. It is not used to attach or restore an arbitrary running session. The command is owner configuration; callers cannot replace it through HTTP.
+AgentHub uses official `@agentclientprotocol/sdk` 2.4.0, stable ACP v1. A configured command is launched only by explicit session creation, using `spawn` without a shell. It is not used to attach or restore an arbitrary running session. The command is owner configuration; callers cannot replace it through HTTP.
 
 ```json
 {
@@ -70,13 +70,13 @@ await client.cancel(session.address);
 
 Endpoints: `POST /v1/sessions`, `POST /v1/prompts`, `POST /v1/session/cancel`. CLI: `create`, `prompt --message-file`, `cancel`. These operations are absent from agent-facing MCP. Normal `send` rejects user input; automatic reply forwarding never chooses it. ACP streams text into a correlated reply when the turn ends. Other stop reasons are reported in native evidence. No silent authentication flow, agent restart or session load is attempted. Disconnect or timeout leaves uncertain delivery; a timeout closes the owned agent process, affecting its other managed sessions too. Default prompt timeout is 60 seconds; callers configuring a longer timeout must adjust their HTTP request timeout and poll the same receipt ID after transport uncertainty.
 
-Permissions use the existing interaction endpoints: an explicitly authorized caller selects an advertised option ID or cancels. Timeout, cancellation and closure cancel pending requests. HarnessHub advertises no client filesystem or terminal execution capabilities. The agent's own execution sandbox and credentials remain its owner's responsibility; ACP is not an execution sandbox. Managed history holds at most 200 entries / 1 MiB text per session in this process, at most 100 sessions. It is not native transcript recovery.
+Permissions use the existing interaction endpoints: an explicitly authorized caller selects an advertised option ID or cancels. Timeout, cancellation and closure cancel pending requests. AgentHub advertises no client filesystem or terminal execution capabilities. The agent's own execution sandbox and credentials remain its owner's responsibility; ACP is not an execution sandbox. Managed history holds at most 200 entries / 1 MiB text per session in this process, at most 100 sessions. It is not native transcript recovery.
 
 Primary references: [ACP initialization](https://agentclientprotocol.com/protocol/v1/initialization), [session setup](https://agentclientprotocol.com/protocol/v1/session-setup), [prompt turns](https://agentclientprotocol.com/protocol/v1/prompt-turn), [official TypeScript SDK](https://agentclientprotocol.com/libraries/typescript).
 
 ## Windows scope
 
-Windows supports the HTTP client, MCP client facade and managed ACP process transport. Run the local daemon with explicit `--ephemeral` and a private `HARNESSHUB_TOKEN`; the POSIX private SQLite store and private credential-file loader deliberately fail closed on Windows. Native Codex UDS access is not provided on Windows.
+Windows supports the HTTP client, MCP client facade and managed ACP process transport. Run the local daemon with explicit `--ephemeral` and a private `AGENTHUB_TOKEN`; the POSIX private SQLite store and private credential-file loader deliberately fail closed on Windows. Native Codex UDS access is not provided on Windows.
 
 Experimental `ClaudePipeAdapter` (`claudeWindows` configuration) accepts owner-supplied session ID, native pipe path and messaging token. It writes the required auth frame first, followed by a peer frame in prompting mode. It does not scrape process credentials, guess endpoints, start sessions or claim authentication success from a successful write. A receipt stays `transport_written`; Windows native callback replies and native history are unsupported. Tokens must be protected as secrets in configuration; session detail never returns them.
 

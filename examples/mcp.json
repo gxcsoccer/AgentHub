@@ -1,16 +1,11 @@
 {
   "mcpServers": {
-    "harnesshub": {
+    "agenthub": {
       "command": "node",
-      "args": [
-        "/ABSOLUTE/PATH/TO/HarnessHub/dist/src/cli.js",
-        "mcp",
-        "--origin-name",
-        "Doubao Work"
-      ],
+      "args": ["/ABSOLUTE/PATH/TO/AgentHub/dist/src/cli.js", "mcp", "--origin-name", "Doubao Work"],
       "env": {
-        "HARNESSHUB_URL": "http://127.0.0.1:3211",
-        "HARNESSHUB_TOKEN_FILE": "/ABSOLUTE/PATH/TO/.harnesshub/token"
+        "AGENTHUB_URL": "http://127.0.0.1:3211",
+        "AGENTHUB_TOKEN_FILE": "/ABSOLUTE/PATH/TO/.agenthub/token"
       }
     }
   }

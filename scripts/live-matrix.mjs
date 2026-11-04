@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { createServer, createConnection } from 'node:net';
 import { once } from 'node:events';
 import { setTimeout as delay } from 'node:timers/promises';
-import { ClaudeAdapter, HarnessHub } from '../dist/src/index.js';
+import { ClaudeAdapter, AgentHub } from '../dist/src/index.js';
 
 export async function runLiveMatrix(c) {
   const {
@@ -231,7 +231,7 @@ export async function runLiveMatrix(c) {
       { sessionId: claudeAddress.sessionId, pid: child.pid, status: 'idle', socketPath: proxyPath },
     ],
   });
-  const faultHub = new HarnessHub([faultAdapter]);
+  const faultHub = new AgentHub([faultAdapter]);
   try {
     const m = input({ ...claudeAddress, instance: 'fault' }, 'peer_message');
     const result = await faultHub.send(m);

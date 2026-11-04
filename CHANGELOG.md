@@ -2,7 +2,7 @@
 
 ## 0.1.0
 
-Initial public release of HarnessHub, a TypeScript middleware for existing Codex and Claude Code sessions, with explicit native message semantics.
+Initial public release of AgentHub, a TypeScript middleware for existing Codex and Claude Code sessions, with explicit native message semantics.
 
 - Retains Codex Session Bridge's original 22-operation API and SDK under separate exports.
 - Unified library, local HTTP/SSE, fetch SDK, CLI, OpenAPI and seven MCP tools.

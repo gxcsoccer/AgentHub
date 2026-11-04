@@ -29,7 +29,7 @@ owner token 保留完整权限。通过 `serve --access-file /private/access.jso
 
 HTTP 根据 token 确定调用方，不能通过请求体冒充。回执、幂等 ID 归创建者所有，owner 可查看全部。受限 SSE 只返回该调用方、当前授权目标的回执事件；原生适配器事件仅 owner 可见。replyTo 在提交和重启后的转发中都检查两端发送权限。修改策略后重启生效；撤权不自动取消已经提交给后端的工作。共享不透明事件游标会体现日志进度，不包含其他调用方正文。相同 OS 用户的恶意进程不在隔离范围内。
 
-基础库通过 `new HarnessHub(adapters, { callers })` 注入策略，通过 `createHubServer({ hub, token, callers })` 单独注入凭证。进程内方法默认 owner，不能用于隔离同进程的不可信代码。给每个 MCP 进程配置独立受限 token。
+基础库通过 `new AgentHub(adapters, { callers })` 注入策略，通过 `createHubServer({ hub, token, callers })` 单独注入凭证。进程内方法默认 owner，不能用于隔离同进程的不可信代码。给每个 MCP 进程配置独立受限 token。
 
 ## 持久事件
 
@@ -63,7 +63,7 @@ SDK 提供 createSession、prompt、cancel；HTTP 为 POST /v1/sessions、/v1/pr
 
 ## Windows 范围
 
-支持 HTTP 客户端、MCP 客户端入口和 ACP 托管进程。Windows 守护进程须显式 `--ephemeral`，并通过私有 HARNESSHUB_TOKEN 提供凭证；POSIX 私有 SQLite 和凭证文件加载器会拒绝 Windows。未提供 Windows Codex UDS 接入。
+支持 HTTP 客户端、MCP 客户端入口和 ACP 托管进程。Windows 守护进程须显式 `--ephemeral`，并通过私有 AGENTHUB_TOKEN 提供凭证；POSIX 私有 SQLite 和凭证文件加载器会拒绝 Windows。未提供 Windows Codex UDS 接入。
 
 实验性 ClaudePipeAdapter（配置项 claudeWindows）接收所有者提供的 sessionId、pipe、token，必须 experimental:true。先写 auth 帧，再写 prompting 身份的 peer 帧；不读取其他进程凭证，不猜地址，不启动会话。写入成功不能证明认证或收件成功，回执只到 transport_written。Windows 原生回调回复和历史不支持；会话详情不返回 token，配置必须按秘密保护。
 

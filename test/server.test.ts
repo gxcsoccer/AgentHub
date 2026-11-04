@@ -4,9 +4,9 @@ import { EventEmitter, once } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { HarnessHub } from '../src/hub.js';
+import { AgentHub } from '../src/hub.js';
 import { createHubServer } from '../src/server.js';
-import { HarnessHubClient } from '../src/client.js';
+import { AgentHubClient } from '../src/client.js';
 import { createMcpServer } from '../src/mcp.js';
 import { Client } from '@modelcontextprotocol/client';
 import { InMemoryTransport } from '@modelcontextprotocol/server';
@@ -38,14 +38,14 @@ class FakeAdapter extends EventEmitter implements Adapter {
 }
 async function fixture(t: test.TestContext) {
   const adapter = new FakeAdapter();
-  const hub = new HarnessHub([adapter]);
+  const hub = new AgentHub([adapter]);
   const app = createHubServer({ hub, token });
   app.server.listen(0, '127.0.0.1');
   await once(app.server, 'listening');
   const a = app.server.address();
   assert(a && typeof a === 'object');
   const baseUrl = `http://127.0.0.1:${a.port}`;
-  const client = new HarnessHubClient({ baseUrl, token });
+  const client = new AgentHubClient({ baseUrl, token });
   t.after(() => app.close());
   return { adapter, hub, app, baseUrl, client };
 }
@@ -86,7 +86,7 @@ test('SDK and JSON CLI share the daemon receipt, without repeated submissions', 
       '--message-id',
       id,
     ],
-    { env: { ...process.env, HARNESSHUB_TOKEN: token } },
+    { env: { ...process.env, AGENTHUB_TOKEN: token } },
   );
   assert.equal(JSON.parse(output.stdout).messageId, id);
   assert.equal(adapter.calls.length, 1);

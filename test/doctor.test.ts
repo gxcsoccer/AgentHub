@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { HarnessHubClient } from '../src/client.js';
+import { AgentHubClient } from '../src/client.js';
 import { TestAdapter, httpFixture, testAddress, testToken } from './helpers.js';
 import type { SessionInfo } from '../src/types.js';
 
@@ -16,7 +16,7 @@ function fixture(
   } = {},
 ) {
   const calls: { path: string; method: string }[] = [];
-  const client = new HarnessHubClient({
+  const client = new AgentHubClient({
     baseUrl: 'http://localhost',
     token: 'PRIVATE_TOKEN',
     fetch: async (url, init) => {
@@ -184,7 +184,7 @@ test('doctor CLI returns JSON and distinct exit codes while leaving the adapter 
     methods: string[] = [];
   app.server.on('request', (req) => methods.push(req.method!));
   const args = [cli, 'doctor', '--url', baseUrl],
-    env = { ...process.env, HARNESSHUB_TOKEN: testToken };
+    env = { ...process.env, AGENTHUB_TOKEN: testToken };
   const normal = await exec(process.execPath, args, { env });
   assert.equal(JSON.parse(normal.stdout).status, 'ok');
   const target = await exec(
@@ -195,7 +195,7 @@ test('doctor CLI returns JSON and distinct exit codes while leaving the adapter 
   assert.equal(target.code, 2);
   assert.equal(JSON.parse(target.stdout).status, 'warning');
   const denied = await exec(process.execPath, args, {
-    env: { ...env, HARNESSHUB_TOKEN: 'incorrect' },
+    env: { ...env, AGENTHUB_TOKEN: 'incorrect' },
   }).catch((e) => e);
   assert.equal(denied.code, 1);
   assert.equal(JSON.parse(denied.stdout).checks[0].code, 'unauthorized');
@@ -212,7 +212,7 @@ test('a bounded client request aborts a hanging read and doctor never retries it
   const keepAlive = setInterval(() => {}, 1000);
   t.after(() => clearInterval(keepAlive));
   let count = 0;
-  const client = new HarnessHubClient({
+  const client = new AgentHubClient({
     baseUrl: 'http://localhost',
     token: 'test',
     timeoutMs: 15,
@@ -229,7 +229,7 @@ test('a bounded client request aborts a hanging read and doctor never retries it
   assert.equal(count, 1);
   for (const timeoutMs of [0, -1, NaN, Infinity, 0.1, 120001])
     assert.throws(
-      () => new HarnessHubClient({ baseUrl: 'http://localhost', token: 'test', timeoutMs }),
+      () => new AgentHubClient({ baseUrl: 'http://localhost', token: 'test', timeoutMs }),
       /timeoutMs/,
     );
 });
@@ -238,7 +238,7 @@ test('discovery limits instance count and concurrency, and one failed backend do
   let active = 0,
     peak = 0,
     reads = 0;
-  const client = new HarnessHubClient({
+  const client = new AgentHubClient({
     baseUrl: 'http://localhost',
     token: 'test',
     fetch: async (url) => {
@@ -272,14 +272,14 @@ test('discovery limits instance count and concurrency, and one failed backend do
 
 test('malformed read responses, generic delivery rejection and absent reply evidence remain explicit', async () => {
   for (const value of [{}, { data: [{}] }]) {
-    const client = new HarnessHubClient({
+    const client = new AgentHubClient({
       baseUrl: 'http://localhost',
       token: 'test',
       fetch: async () => Response.json(value),
     });
     assert.equal((await client.doctor()).checks[0]?.code, 'invalid_response');
   }
-  const client = new HarnessHubClient({
+  const client = new AgentHubClient({
     baseUrl: 'http://localhost',
     token: 'test',
     fetch: async (url) =>
@@ -308,7 +308,7 @@ test('malformed read responses, generic delivery rejection and absent reply evid
     new SyntaxError('PRIVATE'),
     new Error('PRIVATE'),
   ]) {
-    const broken = new HarnessHubClient({
+    const broken = new AgentHubClient({
       baseUrl: 'http://localhost',
       token: 'test',
       fetch: async () => {

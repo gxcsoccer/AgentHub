@@ -9,7 +9,7 @@ import { randomUUID } from 'node:crypto';
 import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import { httpFixture, TestAdapter, testAddress, testToken } from './helpers.js';
-import { HarnessHubClient } from '../src/client.js';
+import { AgentHubClient } from '../src/client.js';
 
 const cli = new URL('../src/cli.js', import.meta.url).pathname;
 const exec = promisify(execFile);
@@ -55,7 +55,7 @@ test('JSON CLI exercises every client command against HTTP and preserves explici
   const tokenPath = join(dir, 'token');
   await writeFile(tokenPath, testToken, { mode: 0o600 });
   const env = { ...process.env };
-  delete env.HARNESSHUB_TOKEN;
+  delete env.AGENTHUB_TOKEN;
   const run = async (...args: string[]) =>
     JSON.parse(
       (
@@ -114,7 +114,7 @@ test('JSON CLI exercises every client command against HTTP and preserves explici
   t.after(() => stop(events));
   assert.equal(JSON.parse(await nextLine(events)).data.data.marker, 'CLI_EVENT');
   await stop(events);
-  assert.match((await exec(process.execPath, [cli, '--help'])).stdout, /HarnessHub/);
+  assert.match((await exec(process.execPath, [cli, '--help'])).stdout, /AgentHub/);
   await assert.rejects(run('invalid'), (e: unknown) =>
     String((e as { stderr?: string }).stderr).includes('Unknown command'),
   );
@@ -130,7 +130,7 @@ test('serve CLI creates a private reusable token and shuts down gracefully with 
     tokenFile = join(dir, 'token');
   await writeFile(config, JSON.stringify({ codex: false, claude: false }));
   const env = { ...process.env };
-  delete env.HARNESSHUB_TOKEN;
+  delete env.AGENTHUB_TOKEN;
   const child = spawn(
     process.execPath,
     [cli, 'serve', '--config', config, '--port', '0', '--token-file', tokenFile],
@@ -141,7 +141,7 @@ test('serve CLI creates a private reusable token and shuts down gracefully with 
   const token = (await readFile(tokenFile, 'utf8')).trim();
   assert.equal((await stat(tokenFile)).mode & 0o777, 0o600);
   assert(!JSON.stringify(ready).includes(token));
-  const api = new HarnessHubClient({ baseUrl: ready.url, token });
+  const api = new AgentHubClient({ baseUrl: ready.url, token });
   assert.deepEqual((await api.instances()).data, []);
   const events = api.events();
   assert.equal((await events.next()).value?.event, 'ready');
@@ -157,10 +157,10 @@ test('official MCP client calls all seven tools over a real stdio child and HTTP
   const transport = new StdioClientTransport({
     command: process.execPath,
     args: [cli, 'mcp', '--url', baseUrl, '--origin-name', 'stdio-test'],
-    env: { HARNESSHUB_TOKEN: testToken },
+    env: { AGENTHUB_TOKEN: testToken },
     stderr: 'pipe',
   });
-  const client = new Client({ name: 'harnesshub-stdio-test', version: '1' });
+  const client = new Client({ name: 'agenthub-stdio-test', version: '1' });
   t.after(() => client.close());
   await client.connect(transport);
   const call = async (name: string, args: Record<string, unknown> = {}) => {

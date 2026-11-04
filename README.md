@@ -1,4 +1,4 @@
-# HarnessHub
+# AgentHub
 
 One API across coding harnesses. A TypeScript library and local service for communicating with existing Codex and Claude Code sessions.
 
@@ -11,13 +11,13 @@ One API across coding harnesses. A TypeScript library and local service for comm
 | Discovery                         | Persisted sessions; native search                 | Running sessions via `claude agents --json`; metadata search        |
 | History                           | Native item pagination                            | Local transcript pagination/search, including busy peer attachments |
 | External messages                 | `turn/start.toolOutput`                           | Native inbox, experimental opt-in for CLI 2.1.318                   |
-| Correlated replies                | Owner-registered `harnesshub_reply` tool          | Native `SendMessage` to Hub callback socket                         |
+| Correlated replies                | Owner-registered `agenthub_reply` tool            | Native `SendMessage` to Hub callback socket                         |
 | Approval responses                | Explicit library/HTTP owner response              | Unsupported by this live adapter                                    |
 | Arbitrary live event subscription | Unsupported; requires an existing native listener | Unsupported; own callbacks only                                     |
 
 Messages retain native semantics: `tool_output` and `peer_message`. The common API never falls back to user input. It never starts, resumes, restarts, or interrupts a session implicitly. Claude's inbound accept/hold/refuse policy remains in control.
 
-The original Codex Session Bridge is retained under `vendor/codex-bridge`, with its 22-operation HTTP/SSE API, fetch SDK, OpenAPI, tests and MIT license. Its native lifecycle and user-input operations are available separately through the `codex-session-bridge` executable and `harnesshub/codex-bridge` exports. See [NOTICE](NOTICE).
+The original Codex Session Bridge is retained under `vendor/codex-bridge`, with its 22-operation HTTP/SSE API, fetch SDK, OpenAPI, tests and MIT license. Its native lifecycle and user-input operations are available separately through the `codex-session-bridge` executable and `agenthub/codex-bridge` exports. See [NOTICE](NOTICE).
 
 ## Run from source
 
@@ -31,13 +31,13 @@ node dist/src/cli.js serve --config examples/local.json
 
 The example explicitly enables experimental Claude native messaging. Without a config, Claude discovery/history work but sends are disabled. Codex connects lazily to its existing control socket. No backend is launched.
 
-The daemon binds to `127.0.0.1:3211` and creates a private token file at `~/.harnesshub/token`. It prints the token path, not the token. Client commands use the same file:
+The daemon binds to `127.0.0.1:3211` and creates a private token file at `~/.agenthub/token`. It prints the token path, not the token. Client commands use the same file:
 
 ```sh
 node dist/src/cli.js doctor
 node dist/src/cli.js instances
 node dist/src/cli.js sessions --harness claude
-node dist/src/cli.js sessions --harness codex --search HarnessHub
+node dist/src/cli.js sessions --harness codex --search AgentHub
 node dist/src/cli.js send --message-file /absolute/path/message.json
 node dist/src/cli.js status --message-id MESSAGE_UUID --wait-ms 30000
 ```
@@ -71,9 +71,9 @@ It sends no probes, opens no callbacks and tests neither disk writes nor model r
 ## Library and SDK
 
 ```ts
-import { HarnessHub, CodexAdapter, ClaudeAdapter } from 'harnesshub';
+import { AgentHub, CodexAdapter, ClaudeAdapter } from 'agenthub';
 
-const hub = new HarnessHub([
+const hub = new AgentHub([
   new CodexAdapter({ instance: 'local' }),
   new ClaudeAdapter({ instance: 'local', nativeMessaging: true }),
 ]);
@@ -85,7 +85,7 @@ try {
 }
 ```
 
-For a separate application, import `HarnessHubClient` from `harnesshub/client` and connect to the daemon. This fetch-only entry point does not import Node transports. The daemon keeps receipts and callback listeners alive across CLI/MCP calls.
+For a separate application, import `AgentHubClient` from `agenthub/client` and connect to the daemon. This fetch-only entry point does not import Node transports. The daemon keeps receipts and callback listeners alive across CLI/MCP calls.
 
 Optional `replyTo` routes the first correlated reply to another explicit session. Forwarding uses a fresh message ID, preserves `inReplyTo`/correlation, increments the hop count, and installs no further reply route. Check `forwardedMessageId` and `forwardError` on the original receipt.
 
@@ -95,7 +95,7 @@ For Codex replies, the owner must register exported `codexReplyTool` when creati
 node dist/src/cli.js attach-reply --harness codex --session-id SESSION_ID --accept-resume-race
 ```
 
-The daemon persists receipts, normalized payload hashes, reply routes and callback correlations in `state.sqlite` beside its token file by default. `--state-file FILE` / `HARNESSHUB_STATE_FILE` changes the path; `--ephemeral` opts out. For library persistence use `await openLocalHub(config, { stateFile: absolutePath })`, or pass `await openReceiptStore(absolutePath)` to `new HarnessHub(adapters, { store })` and await `hub.ready()`. Plain `new HarnessHub(...)` remains in memory. State contains plaintext message/reply content: use a private 0700 directory; database and lock files are 0600.
+The daemon persists receipts, normalized payload hashes, reply routes and callback correlations in `state.sqlite` beside its token file by default. `--state-file FILE` / `AGENTHUB_STATE_FILE` changes the path; `--ephemeral` opts out. For library persistence use `await openLocalHub(config, { stateFile: absolutePath })`, or pass `await openReceiptStore(absolutePath)` to `new AgentHub(adapters, { store })` and await `hub.ready()`. Plain `new AgentHub(...)` remains in memory. State contains plaintext message/reply content: use a private 0700 directory; database and lock files are 0600.
 
 ## MCP and Doubao
 

@@ -1,6 +1,6 @@
 # Security boundaries
 
-HarnessHub is a local service for a single OS user. The CLI binds HTTP to loopback, requires a bearer token, rejects unapproved browser origins and never prints generated tokens. Do not expose the service directly to a network. Anyone with the service token can access configured sessions and explicitly answer exposed Codex approval requests; it is not a per-agent authorization system.
+AgentHub is a local service for a single OS user. The CLI binds HTTP to loopback, requires a bearer token, rejects unapproved browser origins and never prints generated tokens. Do not expose the service directly to a network. The owner token can access all configured sessions and explicitly answer exposed approvals. Additional caller tokens are restricted by configured instance, session and operation grants.
 
 The MCP facade intentionally omits approval, resume and interrupt tools. Its origin name is configured by the owner, but is descriptive metadata, not a cryptographic identity. HTTP credentials are service-wide. Use separately scoped instances or a future policy layer when callers should have different access.
 

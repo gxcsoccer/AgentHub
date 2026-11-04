@@ -2,7 +2,7 @@ import test from 'node:test';
 import { once } from 'node:events';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { HarnessHub } from '../src/hub.js';
+import { AgentHub } from '../src/hub.js';
 import { TestAdapter, testAddress } from './helpers.js';
 import { AccessPolicy, authenticator } from '../src/access.js';
 const caller = {
@@ -31,7 +31,7 @@ test('caller denial occurs before adapter access, including replyTo and owner op
     reads++;
     return read(a);
   };
-  const hub = new HarnessHub([adapter], { callers: [caller] });
+  const hub = new AgentHub([adapter], { callers: [caller] });
   await assert.rejects(
     hub.send({ ...input(), to: { ...testAddress, sessionId: 'forbidden' } }, 'app-a'),
     /authorized/,
@@ -53,7 +53,7 @@ test('caller denial occurs before adapter access, including replyTo and owner op
   await hub.close();
 });
 test('receipts and same-id submissions cannot cross caller boundaries', async () => {
-  const hub = new HarnessHub([new TestAdapter()], {
+  const hub = new AgentHub([new TestAdapter()], {
     callers: [caller, { ...caller, id: 'app-b' }],
   });
   const message = input();
@@ -77,9 +77,9 @@ test('credential configuration fails closed and targeted grants do not authorize
 
 test('HTTP tokens isolate discovery, receipts, SSE, history and approvals', async (t) => {
   const { createHubServer } = await import('../src/server.js');
-  const { HarnessHubClient } = await import('../src/client.js');
+  const { AgentHubClient } = await import('../src/client.js');
   const adapter = new TestAdapter();
-  const hub = new HarnessHub([adapter], { callers: [caller, { ...caller, id: 'app-b' }] });
+  const hub = new AgentHub([adapter], { callers: [caller, { ...caller, id: 'app-b' }] });
   const tokens = { owner: 'owner'.repeat(10), a: 'caller-a'.repeat(8), b: 'caller-b'.repeat(8) };
   const app = createHubServer({
     hub,
@@ -95,8 +95,8 @@ test('HTTP tokens isolate discovery, receipts, SSE, history and approvals', asyn
   const address = app.server.address();
   assert(address && typeof address === 'object');
   const baseUrl = `http://127.0.0.1:${address.port}`;
-  const a = new HarnessHubClient({ baseUrl, token: tokens.a }),
-    b = new HarnessHubClient({ baseUrl, token: tokens.b });
+  const a = new AgentHubClient({ baseUrl, token: tokens.a }),
+    b = new AgentHubClient({ baseUrl, token: tokens.b });
   assert.equal((await a.listSessions(testAddress)).data.length, 1);
   assert.equal(
     adapter.queries.length,
@@ -162,7 +162,7 @@ test('private caller files load relative tokens and reject unsafe files or inval
 
 test('approval grants are session scoped and cannot answer another session request', async (t) => {
   const { createHubServer } = await import('../src/server.js');
-  const { HarnessHubClient } = await import('../src/client.js');
+  const { AgentHubClient } = await import('../src/client.js');
   class Approvals extends TestAdapter {
     answers: string[] = [];
     pendingRequests() {
@@ -181,7 +181,7 @@ test('approval grants are session scoped and cannot answer another session reque
     }
   }
   const a = new Approvals(),
-    hub = new HarnessHub([a], {
+    hub = new AgentHub([a], {
       callers: [
         {
           id: 'approve',
@@ -196,7 +196,7 @@ test('approval grants are session scoped and cannot answer another session reque
   t.after(() => app.close());
   const addr = app.server.address();
   assert(addr && typeof addr === 'object');
-  const client = new HarnessHubClient({ baseUrl: `http://127.0.0.1:${addr.port}`, token });
+  const client = new AgentHubClient({ baseUrl: `http://127.0.0.1:${addr.port}`, token });
   assert.deepEqual(
     (await client.pendingRequests(testAddress)).data.map((p) => p.id),
     ['mine'],

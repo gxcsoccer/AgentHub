@@ -54,6 +54,7 @@ export class AcpAdapter extends EventEmitter implements Adapter {
   private initialization?: Promise<ClientConnection>;
   private closed = false;
   private stopped = false;
+  private creating = 0;
   private readonly sessions = new Map<string, Managed>();
   private readonly permissions = new Map<string, Permission>();
   constructor(private readonly options: AcpOptions) {
@@ -75,7 +76,7 @@ export class AcpAdapter extends EventEmitter implements Adapter {
     this.child = child;
     // Drain stderr, but do not expose potentially private backend logs to callers.
     child.stderr.resume();
-    const app = client({ name: 'harnesshub' })
+    const app = client({ name: 'agenthub' })
       .onNotification('session/update', ({ params }) => {
         const s = this.sessions.get(params.sessionId);
         if (!s) return;
@@ -116,7 +117,7 @@ export class AcpAdapter extends EventEmitter implements Adapter {
             fs: { readTextFile: false, writeTextFile: false },
             terminal: false,
           },
-          clientInfo: { name: 'harnesshub', version: '0.1.0' },
+          clientInfo: { name: 'agenthub', version: '0.1.0' },
         },
         {
           cancellationSignal: AbortSignal.timeout(this.options.timeoutMs ?? 30000),
@@ -134,30 +135,35 @@ export class AcpAdapter extends EventEmitter implements Adapter {
   async createSession(cwd: string): Promise<SessionInfo> {
     text(cwd, 'cwd', 4096);
     if (!isAbsolute(cwd)) throw new HubError('invalid_input', 'Managed cwd must be absolute');
-    if (this.sessions.size >= 100)
+    if (this.sessions.size + this.creating >= 100)
       throw new HubError('session_capacity', 'Managed session limit reached', 429);
-    const connection = await this.connect();
-    const result = await connection.agent.request(
-      'session/new',
-      { cwd, mcpServers: [] },
-      {
-        cancellationSignal: AbortSignal.timeout(this.options.timeoutMs ?? 30000),
-        stopWaitingOnCancel: true,
-      },
-    );
-    const id = text(result.sessionId, 'sessionId', 512);
-    if (this.sessions.has(id))
-      throw new HubError('backend_protocol', 'Agent reused an existing session ID', 502);
-    const s: Managed = {
-      address: { harness: this.harness, instance: this.instance, sessionId: id },
-      cwd,
-      busy: false,
-      history: [],
-      dropped: 0,
-      reply: '',
-    };
-    this.sessions.set(id, s);
-    return this.info(s);
+    this.creating++;
+    try {
+      const connection = await this.connect();
+      const result = await connection.agent.request(
+        'session/new',
+        { cwd, mcpServers: [] },
+        {
+          cancellationSignal: AbortSignal.timeout(this.options.timeoutMs ?? 30000),
+          stopWaitingOnCancel: true,
+        },
+      );
+      const id = text(result.sessionId, 'sessionId', 512);
+      if (this.sessions.has(id))
+        throw new HubError('backend_protocol', 'Agent reused an existing session ID', 502);
+      const s: Managed = {
+        address: { harness: this.harness, instance: this.instance, sessionId: id },
+        cwd,
+        busy: false,
+        history: [],
+        dropped: 0,
+        reply: '',
+      };
+      this.sessions.set(id, s);
+      return this.info(s);
+    } finally {
+      this.creating--;
+    }
   }
   private info(s: Managed): SessionInfo {
     return {

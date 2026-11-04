@@ -3,8 +3,8 @@ import type { Rpc } from '../vendor/codex-bridge/src/rpc.js';
 import type { Json } from '../src/types.js';
 import { once } from 'node:events';
 import type { TestContext } from 'node:test';
-import { HarnessHub } from '../src/hub.js';
-import { HarnessHubClient } from '../src/client.js';
+import { AgentHub } from '../src/hub.js';
+import { AgentHubClient } from '../src/client.js';
 import { createHubServer } from '../src/server.js';
 import type {
   Adapter,
@@ -15,7 +15,7 @@ import type {
   Submission,
 } from '../src/types.js';
 
-export const testToken = 'harnesshub-local-test-'.repeat(3);
+export const testToken = 'agenthub-local-test-'.repeat(3);
 export const testAddress = { harness: 'test', instance: 'local', sessionId: 'opaque/id:1' };
 export class TestAdapter extends EventEmitter implements Adapter {
   harness = 'test';
@@ -54,7 +54,7 @@ export async function httpFixture(
   adapter: Adapter = new TestAdapter(),
   allowedOrigins?: string[],
 ) {
-  const hub = new HarnessHub([adapter]);
+  const hub = new AgentHub([adapter]);
   const app = createHubServer({ hub, token: testToken, allowedOrigins });
   app.server.listen(0, '127.0.0.1');
   await once(app.server, 'listening');
@@ -62,7 +62,7 @@ export async function httpFixture(
   if (!info || typeof info === 'string') throw new Error('Missing server address');
   const baseUrl = `http://127.0.0.1:${info.port}`;
   t.after(() => app.close());
-  return { hub, app, baseUrl, client: new HarnessHubClient({ baseUrl, token: testToken }) };
+  return { hub, app, baseUrl, client: new AgentHubClient({ baseUrl, token: testToken }) };
 }
 export class FakeRpc extends EventEmitter implements Rpc {
   connected = true;

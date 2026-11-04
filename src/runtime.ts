@@ -1,5 +1,5 @@
 import * as z from 'zod/v4';
-import { HarnessHub } from './hub.js';
+import { AgentHub } from './hub.js';
 import { ClaudePipeAdapter } from './adapters/claude-pipe.js';
 import { AcpAdapter } from './adapters/acp.js';
 import { CodexAdapter } from './adapters/codex.js';
@@ -88,14 +88,14 @@ export function createLocalHub(
       adapters.push(new ClaudeAdapter(entry));
   for (const entry of config.claudeWindows ?? []) adapters.push(new ClaudePipeAdapter(entry));
   for (const entry of config.acp ?? []) adapters.push(new AcpAdapter(entry));
-  return new HarnessHub(adapters, options);
+  return new AgentHub(adapters, options);
 }
 export async function openLocalHub(
   value: unknown,
   options: { stateFile: string | false; callers?: CallerPolicy[] },
 ) {
   const store = options.stateFile ? await openReceiptStore(options.stateFile) : undefined;
-  let hub: HarnessHub | undefined;
+  let hub: AgentHub | undefined;
   try {
     hub = createLocalHub(value, { store, callers: options.callers });
     await hub.ready();

@@ -9,15 +9,15 @@ npm ci
 npm run check
 ```
 
-The suite contains 91 HarnessHub tests and the 41 original Codex Session Bridge tests: 132 passing tests. The root check also runs formatting, strict TypeScript checks and coverage thresholds. The imported bridge is tested from its own directory, preserving its original fixtures and contract.
+The suite contains 93 AgentHub tests and the 41 original Codex Session Bridge tests: 134 passing tests. The root check also runs formatting, strict TypeScript checks and coverage thresholds. The imported bridge is tested from its own directory, preserving its original fixtures and contract.
 
-HarnessHub coverage includes concurrent idempotency, capacity/expiry, payload conflicts, uncertain delivery, early/late replies, bounded reply forwarding, shutdown races, Codex tool-output delivery and explicit approval responses, Claude NDJSON framing and reverse callbacks over local test sockets, policy controls, malformed/expired callbacks, bounded history and cursor changes, authentication/origins, malformed HTTP requests, every JSON CLI command, all seven MCP tools through a real stdio child, SSE slow consumers/CRLF/multiline frames, and OpenAPI consistency.
+AgentHub coverage includes concurrent idempotency, capacity/expiry, payload conflicts, uncertain delivery, early/late replies, bounded reply forwarding, shutdown races, Codex tool-output delivery and explicit approval responses, Claude NDJSON framing and reverse callbacks over local test sockets, policy controls, malformed/expired callbacks, bounded history and cursor changes, authentication/origins, malformed HTTP requests, every JSON CLI command, all seven MCP tools through a real stdio child, SSE slow consumers/CRLF/multiline frames, and OpenAPI consistency.
 
-On Node 25.9.0, V8 coverage of compiled `dist/src/**/*.js` was 96.39% lines, 87.04% branches and 93.92% functions. This excludes the retained bridge and live scripts. `npm run test:coverage` enforces aggregate minimums of 90%/80%/85%; `npm run check` and CI include that command. These metrics do not prove exhaustive behavior or live compatibility. The audit found and fixed malformed-URL 500 responses, writes after SSE termination, CRLF/chunk-size parser errors, partial-constructor listener leaks and non-Error adapter rejection handling.
+On Node 25.9.0, V8 coverage of compiled `dist/src/**/*.js` was 96.40% lines, 87.17% branches and 93.92% functions. This excludes the retained bridge and live scripts. `npm run test:coverage` enforces aggregate minimums of 90%/80%/85%; `npm run check` and CI include that command. These metrics do not prove exhaustive behavior or live compatibility. The audit found and fixed malformed-URL 500 responses, writes after SSE termination, CRLF/chunk-size parser errors, partial-constructor listener leaks and non-Error adapter rejection handling.
 
 Additional tests cover SQLite transaction rollback, retention, schema/corruption/path rejection, disk failures, single-owner locks, explicit attach via HTTP/CLI, and conservative tool readiness. Actual child processes are SIGKILLed at native submission and reply-forward crash points: the lock is released, ambiguous messages are not replayed, stable IDs survive, and a late simulated Claude callback rebinds the original socket and forwards once.
 
-Adapter unit tests use fake peers and RPC transports. They do not prove acceptance by a running model. The complete check passed locally on Node 22.23.2 and 25.9.0. CI is configured for Linux/macOS and Node 22/24; it does not run live model tests or use credentials. Remote CI, Linux execution and Node 24 have not been verified in this run.
+Adapter unit tests use fake peers and RPC transports. They do not prove acceptance by a running model. The complete check passed locally on Node 22.23.2 and 25.9.0. CI is configured for Linux/macOS and Node 22/24; it does not run live model tests or use credentials. The first remote CI passed Linux/macOS Node 22/24 full checks, Windows Node 22/24 portable checks and a Linux synthetic soak. The final renamed commit is checked again before release.
 
 ## Live cross-harness validation
 
@@ -35,7 +35,7 @@ The original two runs exercised the reusable adapters and Hub:
 2. Send Codex a tool output. Codex calls an owner-registered test delegation tool.
 3. Send the delegated message to Claude through the native inbox.
 4. Claude replies with native `SendMessage` to the Hub callback socket.
-5. Hub forwards the correlated reply to Codex as another tool output; Codex acknowledges through `harnesshub_reply`.
+5. Hub forwards the correlated reply to Codex as another tool output; Codex acknowledges through `agenthub_reply`.
 6. Verify message IDs and payload, Codex history without user-message injection, and Claude history carrying peer origin.
 7. Stop only the test Claude process, archive the test Codex thread and verify it is unloaded, then remove the temporary working directory.
 
@@ -95,7 +95,7 @@ npm run smoke:doctor -- --run
 - The matrix covers the named scenarios, not all combinations, long-duration load, every approval subtype or every harness/provider version. CLI success paths and MCP tools are exercised individually; branch coverage remains below 100%.
 - No Doubao runtime acceptance, Windows inbox implementation, arbitrary existing-session tool registration, or native Codex agent-mailbox equivalence is claimed.
 - MCP is exercised over real stdio and HTTP against live harnesses; this still does not prove Doubao accepts a particular plugin configuration.
-- The original bridge's historical 22-operation isolated acceptance is documented in `vendor/codex-bridge/docs/VERIFICATION.md`. Importing that evidence does not mean all 22 operations were rerun live for HarnessHub or normalized into the new API.
+- The original bridge's historical 22-operation isolated acceptance is documented in `vendor/codex-bridge/docs/VERIFICATION.md`. Importing that evidence does not mean all 22 operations were rerun live for AgentHub or normalized into the new API.
 - CLI version checks cannot establish the version of every already-running Claude process. The native protocol adapter remains explicitly enabled and version-specific.
 
 ## Distribution
@@ -109,3 +109,5 @@ npm run smoke:doctor -- --run
 New automatic tests cover caller-scoped discovery, reads, replies, SSE, approvals, private credential files, durable event migration/replay and atomic rollback, bounded full-text scanning, and official ACP v1 SDK interoperability with a real fixture process. The ACP fixture is not a real coding model. Windows pipe tests distinguish wire transport from native model receipt. See [extension boundaries](EXTENSIONS.md).
 
 A 120-second synthetic run passed 3,352 HTTP submissions, 442 duplicate checks and 23 SQLite/server reopen cycles. Native submission count matched unique requests; event cursors survived restarts. Post-GC heap grew about 3.7 MiB, RSS about 69.4 MiB and active resources stayed at four. This is a bounded load check, not proof of long-term production stability. A longer run and remote CI results are recorded when completed.
+
+The ten-minute synthetic run passed 16,432 unique submissions, 2,168 duplicate checks and 114 server/SQLite reopen cycles. Native calls matched unique messages. Open file descriptors stayed at 21; post-GC heap grew 4.04 MiB and RSS 89.69 MiB, within the scripted limits. Private report: .local/verification/soak.json. This is not ten minutes of real-model load or a proof against longer-term leaks.

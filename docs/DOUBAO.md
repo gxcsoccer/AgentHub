@@ -4,7 +4,7 @@ The implemented entry points are the local JSON CLI and MCP stdio facade. No Dou
 
 ## First local trial
 
-1. Build HarnessHub and start its daemon using `examples/local.json`.
+1. Build AgentHub and start its daemon using `examples/local.json`.
 2. Replace the absolute paths in `examples/mcp.json` and add that server to a separately created Doubao test environment that supports local stdio MCP. Do not publish this template as an official remote-MCP plugin package.
 3. Ask the test conversation to call `list_sessions` for Claude, inspect `get_session`, and select a dedicated test session whose capabilities include `peer_message`.
 4. Call `send_message` with a new UUID, explicit address and fixed test text. Poll `get_message_status` with that same UUID. Verify a matching reply appears in the same Doubao conversation.

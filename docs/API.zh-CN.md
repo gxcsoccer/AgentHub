@@ -49,7 +49,7 @@ SSE 的 `message.status` 包含回执快照，`adapter.event` 包含当前连接
 
 ## 客户端诊断
 
-`HarnessHubClient.doctor({ scope?, sessionId? })` 组合现有 GET 接口，没有新增 HTTP 路由或 MCP 工具。`sessionId` 必须配合 `{ harness, instance }`。报告包含 `schemaVersion:1`、`checkedAt`、`readOnly:true`、`deliveryTested:false`、总体 `status` 和逐项 `checks`。每项有 `id/status/code/message` 及可选 `scope/details`；状态为 `ok/warning/error`，整体取最严重项。默认只发现，指定目标才检查发送与回复前置条件。
+`AgentHubClient.doctor({ scope?, sessionId? })` 组合现有 GET 接口，没有新增 HTTP 路由或 MCP 工具。`sessionId` 必须配合 `{ harness, instance }`。报告包含 `schemaVersion:1`、`checkedAt`、`readOnly:true`、`deliveryTested:false`、总体 `status` 和逐项 `checks`。每项有 `id/status/code/message` 及可选 `scope/details`；状态为 `ok/warning/error`，整体取最严重项。默认只发现，指定目标才检查发送与回复前置条件。
 
 诊断最多并发 4 个实例，最多检查前 32 个；每个实例只读取 limit=10 的第一页并显式报告 hasMore。一个实例失败不会跳过其他实例。报告不包含名称、cwd、正文、token 或原始后端错误。CLI doctor 每请求默认 10 秒；通用 fetch 客户端新增可选 `timeoutMs`（整数 1..120000，默认仍为 70000），不自动重试；该超时用于 JSON 请求，SSE 仍使用调用方提供的 signal。CLI 退出码 0/2/1 对应 ok/warning/error；令牌文件缺失或参数错误走原有 stderr 错误路径，不创建令牌或启动服务。
 

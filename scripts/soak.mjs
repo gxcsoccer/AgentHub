@@ -6,12 +6,7 @@ import { promisify } from 'node:util';
 import { mkdtemp, rm, mkdir, writeFile, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import {
-  HarnessHub,
-  HarnessHubClient,
-  createHubServer,
-  openReceiptStore,
-} from '../dist/src/index.js';
+import { AgentHub, AgentHubClient, createHubServer, openReceiptStore } from '../dist/src/index.js';
 const duration = Number(process.argv[process.argv.indexOf('--seconds') + 1] || 30);
 assert(duration >= 5 && duration <= 3600);
 const dir = await mkdtemp(join(tmpdir(), 'hh-soak-'));
@@ -49,7 +44,7 @@ class TestAdapter extends EventEmitter {
   async close() {}
 }
 async function open() {
-  hub = new HarnessHub([new TestAdapter()], {
+  hub = new AgentHub([new TestAdapter()], {
     store: await openReceiptStore(join(dir, 'state.sqlite')),
     receiptCapacity: 512,
     receiptTtlMs: 10000,
@@ -57,7 +52,7 @@ async function open() {
   app = createHubServer({ hub, token });
   app.server.listen(0, '127.0.0.1');
   await once(app.server, 'listening');
-  client = new HarnessHubClient({
+  client = new AgentHubClient({
     baseUrl: `http://127.0.0.1:${app.server.address().port}`,
     token,
   });

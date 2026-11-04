@@ -40,7 +40,7 @@ const rank = {
   rejected: 5,
   replied: 6,
 };
-export class HarnessHub {
+export class AgentHub {
   readonly events: EventLog;
   readonly access: AccessPolicy;
   private readonly adapters = new Map<string, Adapter>();
@@ -499,7 +499,7 @@ export class HarnessHub {
           to,
           delivery,
           text: body,
-          origin: { name: `${original.to.harness} via HarnessHub`, session: original.to },
+          origin: { name: `${original.to.harness} via AgentHub`, session: original.to },
           inReplyTo: original.messageId,
           correlationId: original.correlationId ?? original.messageId,
           expiresAt: original.expiresAt,

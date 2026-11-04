@@ -7,7 +7,7 @@ import { CodexRpc } from '../dist/vendor/codex-bridge/src/rpc.js';
 import {
   CodexAdapter,
   ClaudeAdapter,
-  HarnessHub,
+  AgentHub,
   openReceiptStore,
   createHubServer,
 } from '../dist/src/index.js';
@@ -52,7 +52,7 @@ rpc.request = async (method, params = {}) => {
 };
 const claude = new ClaudeAdapter({ nativeMessaging: true, discover: async () => [config.claude] });
 const codex = new CodexAdapter({ rpc });
-const hub = new HarnessHub([codex, claude], { store: await openReceiptStore(config.stateFile) });
+const hub = new AgentHub([codex, claude], { store: await openReceiptStore(config.stateFile) });
 await hub.ready();
 const app = createHubServer({ hub, token: config.token });
 app.server.listen(0, '127.0.0.1');

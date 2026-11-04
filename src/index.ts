@@ -1,5 +1,5 @@
 export * from './types.js';
-export { HarnessHub } from './hub.js';
+export { AgentHub } from './hub.js';
 export { HubError } from './validation.js';
 export { CodexAdapter, codexReplyTool } from './adapters/codex.js';
 export {
@@ -16,7 +16,7 @@ export {
   type AdapterState,
 } from './store.js';
 export { createHubServer } from './server.js';
-export { HarnessHubClient, HubApiError } from './client.js';
+export { AgentHubClient, HubApiError } from './client.js';
 export { openApi } from './openapi.js';
 export { diagnose, type DoctorOptions, type DoctorReport, type DiagnosticCheck } from './doctor.js';
 

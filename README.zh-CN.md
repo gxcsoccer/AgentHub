@@ -1,4 +1,4 @@
-# HarnessHub
+# AgentHub
 
 跨 coding harness 的统一通信基础库。提供 TypeScript 库、本地 HTTP/SSE 服务、fetch SDK、JSON CLI 和 MCP 入口，连接已经运行的 Codex、Claude Code 会话。
 
@@ -11,13 +11,13 @@
 | 发现与搜索       | 原生持久会话列表和搜索             | `claude agents --json` 运行中会话；名称/目录搜索 |
 | 历史             | 原生条目分页                       | 本地日志分页与搜索，包含忙碌时的 peer 附件       |
 | 外部消息         | `turn/start.toolOutput`            | 原生 inbox；2.1.318 实验性适配，需要显式开启     |
-| 关联回复         | 会话所有者注册 `harnesshub_reply`  | 原生 `SendMessage` 返回 Hub socket               |
+| 关联回复         | 会话所有者注册 `agenthub_reply`    | 原生 `SendMessage` 返回 Hub socket               |
 | 审批交互         | 库/HTTP 显式回答                   | 当前适配器不支持                                 |
 | 任意会话实时订阅 | 不支持；依赖连接已有的原生监听关系 | 不支持；仅自身消息回调                           |
 
 统一接口明确区分 `tool_output` 和 `peer_message`，不会静默转换成用户输入。读取和发送均不自动启动、恢复、中断或重启会话，也不修改 Claude 的接收策略和权限。
 
-原 Codex Session Bridge 的源码、22 个接口、SDK、OpenAPI、中英文文档及测试完整保留在 `vendor/codex-bridge`。原生生命周期和用户输入接口由独立的 `codex-session-bridge` 命令及 `harnesshub/codex-bridge` 导出保留。[来源及许可证](NOTICE)。
+原 Codex Session Bridge 的源码、22 个接口、SDK、OpenAPI、中英文文档及测试完整保留在 `vendor/codex-bridge`。原生生命周期和用户输入接口由独立的 `codex-session-bridge` 命令及 `agenthub/codex-bridge` 导出保留。[来源及许可证](NOTICE)。
 
 ## 启动
 
@@ -29,13 +29,13 @@ npm run build
 node dist/src/cli.js serve --config examples/local.json
 ```
 
-示例配置显式开启 Claude 原生发送。不传配置时，Claude 默认只提供发现/历史，发送关闭。Codex 按需连接已有 control socket。服务绑定 `127.0.0.1:3211`，私有令牌保存在 `~/.harnesshub/token`，终端仅显示路径。
+示例配置显式开启 Claude 原生发送。不传配置时，Claude 默认只提供发现/历史，发送关闭。Codex 按需连接已有 control socket。服务绑定 `127.0.0.1:3211`，私有令牌保存在 `~/.agenthub/token`，终端仅显示路径。
 
 ```sh
 node dist/src/cli.js doctor
 node dist/src/cli.js instances
 node dist/src/cli.js sessions --harness claude
-node dist/src/cli.js sessions --harness codex --search HarnessHub
+node dist/src/cli.js sessions --harness codex --search AgentHub
 node dist/src/cli.js send --message-file /absolute/path/message.json
 node dist/src/cli.js status --message-id MESSAGE_UUID --wait-ms 30000
 ```
@@ -69,9 +69,9 @@ node dist/src/cli.js doctor --harness claude --instance local --timeout-ms 10000
 ## 基础库与回复路由
 
 ```ts
-import { HarnessHub, CodexAdapter, ClaudeAdapter } from 'harnesshub';
+import { AgentHub, CodexAdapter, ClaudeAdapter } from 'agenthub';
 
-const hub = new HarnessHub([
+const hub = new AgentHub([
   new CodexAdapter({ instance: 'local' }),
   new ClaudeAdapter({ instance: 'local', nativeMessaging: true }),
 ]);
@@ -82,7 +82,7 @@ try {
 }
 ```
 
-其他应用使用 `harnesshub/client` 中的 `HarnessHubClient` 访问本地服务；该导出仅依赖 fetch。CLI/MCP 共用守护进程中的回执和回调监听。
+其他应用使用 `agenthub/client` 中的 `AgentHubClient` 访问本地服务；该导出仅依赖 fetch。CLI/MCP 共用守护进程中的回执和回调监听。
 
 消息可指定 `replyTo`，将第一条关联回复转发到指定会话。转发有独立消息 ID，保留 `inReplyTo`，增加跳数，不再安装回复路由。原回执包含 `forwardedMessageId` 和可能的 `forwardError`。
 
@@ -92,7 +92,7 @@ Codex 回复需要所有者在创建会话时注册导出的 `codexReplyTool`。
 node dist/src/cli.js attach-reply --harness codex --session-id SESSION_ID --accept-resume-race
 ```
 
-守护进程默认将回执、载荷哈希、回复路由和回调关联持久化到令牌文件旁的 `state.sqlite`。用 `--state-file FILE` / `HARNESSHUB_STATE_FILE` 修改位置，`--ephemeral` 关闭持久化。基础库可使用 `await openLocalHub(config, { stateFile: absolutePath })`，或将 `await openReceiptStore(absolutePath)` 传给 `new HarnessHub(adapters, { store })` 后等待 `hub.ready()`；直接构造且不传 store 仍为内存模式。状态包含明文消息和回复，目录要求 0700，数据库和锁文件为 0600。
+守护进程默认将回执、载荷哈希、回复路由和回调关联持久化到令牌文件旁的 `state.sqlite`。用 `--state-file FILE` / `AGENTHUB_STATE_FILE` 修改位置，`--ephemeral` 关闭持久化。基础库可使用 `await openLocalHub(config, { stateFile: absolutePath })`，或将 `await openReceiptStore(absolutePath)` 传给 `new AgentHub(adapters, { store })` 后等待 `hub.ready()`；直接构造且不传 store 仍为内存模式。状态包含明文消息和回复，目录要求 0700，数据库和锁文件为 0600。
 
 ## 豆包与 MCP
 

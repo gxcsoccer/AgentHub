@@ -9,7 +9,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 const directory = process.argv[2];
 if (!/^\/(?:private\/)?tmp\/hh-live-[^/]+\/claude$/.test(directory ?? ''))
   throw Error('Isolated directory required');
-const server = new McpServer({ name: 'harnesshub-test-gate', version: '1' });
+const server = new McpServer({ name: 'agenthub-test-gate', version: '1' });
 server.registerTool(
   'wait',
   {

@@ -5,7 +5,7 @@ import { homedir } from 'node:os';
 import { join, resolve, dirname } from 'node:path';
 import { once } from 'node:events';
 import { loadToken, localPort } from '../vendor/codex-bridge/src/config.js';
-import { HarnessHubClient } from './client.js';
+import { AgentHubClient } from './client.js';
 import { createHubServer } from './server.js';
 import { loadAccessFile } from './access-file.js';
 import { openLocalHub } from './runtime.js';
@@ -42,26 +42,26 @@ async function main() {
   });
   const command = positionals[0] ?? 'help';
   if (values.help || command === 'help') {
-    console.log(`HarnessHub 0.1.0
+    console.log(`AgentHub 0.1.0
 
-  harnesshub serve [--config FILE] [--port 3211] [--token-file FILE]
+  agenthub serve [--config FILE] [--port 3211] [--token-file FILE]
                   [--state-file FILE | --ephemeral] [--access-file FILE]
-  harnesshub instances
-  harnesshub doctor [--harness NAME --instance local] [--session-id ID] [--timeout-ms 10000]
-  harnesshub sessions --harness codex|claude [--instance local] [--search TEXT]
-  harnesshub session|history --harness NAME --session-id ID [--cursor CURSOR]
-  harnesshub attach-reply --harness codex --session-id ID --accept-resume-race
-  harnesshub search --harness NAME --session-id ID --search TEXT
-  harnesshub create --harness acp --instance NAME --cwd ABSOLUTE_PATH
-  harnesshub prompt --message-file FILE
-  harnesshub cancel --harness acp --instance NAME --session-id ID
-  harnesshub send --message-file FILE
-  harnesshub status --message-id UUID [--wait-ms 30000]
-  harnesshub events [--after CURSOR]
-  harnesshub mcp [--origin-name NAME]
+  agenthub instances
+  agenthub doctor [--harness NAME --instance local] [--session-id ID] [--timeout-ms 10000]
+  agenthub sessions --harness codex|claude [--instance local] [--search TEXT]
+  agenthub session|history --harness NAME --session-id ID [--cursor CURSOR]
+  agenthub attach-reply --harness codex --session-id ID --accept-resume-race
+  agenthub search --harness NAME --session-id ID --search TEXT
+  agenthub create --harness acp --instance NAME --cwd ABSOLUTE_PATH
+  agenthub prompt --message-file FILE
+  agenthub cancel --harness acp --instance NAME --session-id ID
+  agenthub send --message-file FILE
+  agenthub status --message-id UUID [--wait-ms 30000]
+  agenthub events [--after CURSOR]
+  agenthub mcp [--origin-name NAME]
 
 Clients: --url http://127.0.0.1:3211 --token-file FILE
-Environment: HARNESSHUB_URL, HARNESSHUB_TOKEN, HARNESSHUB_TOKEN_FILE, HARNESSHUB_STATE_FILE
+Environment: AGENTHUB_URL, AGENTHUB_TOKEN, AGENTHUB_TOKEN_FILE, AGENTHUB_STATE_FILE
 Claude native sends require nativeMessaging:true in the config and CLI 2.1.318.
 Receipts persist by default beside the token file (state.sqlite). Node >=22.13 required.
 attach-reply explicitly uses thread/resume after a loaded check; a concurrent unload may resume it.
@@ -92,19 +92,19 @@ No session is launched, resumed or interrupted implicitly.`);
     throw new Error(`Unknown command: ${command}`);
   const tokenPath = resolve(
     values['token-file'] ??
-      process.env.HARNESSHUB_TOKEN_FILE ??
-      join(homedir(), '.harnesshub', 'token'),
+      process.env.AGENTHUB_TOKEN_FILE ??
+      join(homedir(), '.agenthub', 'token'),
   );
   if (command === 'serve') {
     const config = values.config ? JSON.parse(await readFile(resolve(values.config), 'utf8')) : {};
-    const token = await loadToken(tokenPath, process.env.HARNESSHUB_TOKEN);
+    const token = await loadToken(tokenPath, process.env.AGENTHUB_TOKEN);
     if (values.ephemeral && values['state-file'])
       throw new Error('Choose --state-file or --ephemeral');
     const stateFile = values.ephemeral
       ? false
       : resolve(
           values['state-file'] ??
-            process.env.HARNESSHUB_STATE_FILE ??
+            process.env.AGENTHUB_STATE_FILE ??
             join(dirname(tokenPath), 'state.sqlite'),
         );
     const access = values['access-file'] ? await loadAccessFile(values['access-file']) : undefined;
@@ -132,16 +132,16 @@ No session is launched, resumed or interrupted implicitly.`);
     console.log(
       JSON.stringify({
         url: `http://127.0.0.1:${typeof addr === 'object' && addr ? addr.port : values.port}`,
-        tokenSource: process.env.HARNESSHUB_TOKEN ? 'HARNESSHUB_TOKEN' : tokenPath,
+        tokenSource: process.env.AGENTHUB_TOKEN ? 'AGENTHUB_TOKEN' : tokenPath,
         stateFile,
       }),
     );
     return;
   }
   // Client commands never create a new credential or silently start a daemon.
-  const token = (process.env.HARNESSHUB_TOKEN ?? (await readFile(tokenPath, 'utf8'))).trim();
-  const client = new HarnessHubClient({
-    baseUrl: values.url ?? process.env.HARNESSHUB_URL ?? 'http://127.0.0.1:3211',
+  const token = (process.env.AGENTHUB_TOKEN ?? (await readFile(tokenPath, 'utf8'))).trim();
+  const client = new AgentHubClient({
+    baseUrl: values.url ?? process.env.AGENTHUB_URL ?? 'http://127.0.0.1:3211',
     token,
     ...(command === 'doctor' ? { timeoutMs: Number(values['timeout-ms'] ?? 10000) } : {}),
   });

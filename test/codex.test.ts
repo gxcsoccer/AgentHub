@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { CodexAdapter } from '../src/adapters/codex.js';
-import { HarnessHub } from '../src/hub.js';
+import { AgentHub } from '../src/hub.js';
 import { FakeRpc } from './helpers.js';
 const id = randomUUID();
 const to = { harness: 'codex', instance: 'local', sessionId: id };
@@ -14,7 +14,7 @@ function fixture() {
   rpc.handlers.set('thread/loaded/list', () => ({ data: [id], nextCursor: null }));
   rpc.handlers.set('turn/start', () => ({ turn: { id: 'turn' } }));
   const adapter = new CodexAdapter({ rpc, requestTtlMs: 500 });
-  return { rpc, adapter, hub: new HarnessHub([adapter]) };
+  return { rpc, adapter, hub: new AgentHub([adapter]) };
 }
 const message = () => ({
   messageId: randomUUID(),
@@ -31,14 +31,14 @@ test('Codex external messages use tool output with empty input; reads and sends 
   assert.equal(receipt.status, 'accepted');
   const call = rpc.calls.find((x) => x.method === 'turn/start')!;
   assert.deepEqual(call.params.input, []);
-  assert.equal((call.params.toolOutput as { namespace: string }).namespace, 'harnesshub');
+  assert.equal((call.params.toolOutput as { namespace: string }).namespace, 'agenthub');
   assert(!rpc.calls.some((x) => x.method === 'thread/resume'));
   rpc.emit('request', {
     id: 1,
     method: 'item/tool/call',
     params: {
       threadId: id,
-      tool: 'harnesshub_reply',
+      tool: 'agenthub_reply',
       arguments: { inReplyTo: input.messageId, text: 'answer' },
     },
   });
@@ -77,7 +77,7 @@ test('approvals require an explicit response; unsolicited or mismatched replies 
     method: 'item/tool/call',
     params: {
       threadId: id,
-      tool: 'harnesshub_reply',
+      tool: 'agenthub_reply',
       arguments: { inReplyTo: randomUUID(), text: 'forged' },
     },
   });
@@ -99,7 +99,7 @@ test('Codex search unwraps thread results and history preserves native functionC
         item: {
           id: 'item',
           type: 'functionCallOutput',
-          namespace: 'harnesshub',
+          namespace: 'agenthub',
           output: 'external',
         },
       },
