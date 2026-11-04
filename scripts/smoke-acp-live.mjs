@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, writeFile, readFile, rm, chmod } from 'node:fs/promises
 import { join, resolve } from 'node:path';
 import { once } from 'node:events';
 import { AcpAdapter, AgentHub, AgentHubClient, createHubServer } from '../dist/src/index.js';
-import { exec, cleanEnv, isolatedCodexHome, until } from './live-processes.mjs';
+import { exec, cleanEnv, isolatedCodexHome, until, cleanupManagedRun } from './live-processes.mjs';
 
 if (!process.argv.includes('--run')) {
   console.log(
@@ -46,7 +46,6 @@ const gone = (pid) => {
     return true;
   }
 };
-let ownedPids = [];
 const check = (name, evidence = {}) => {
   report.checks.push({ name, passed: true, evidence });
   console.log(JSON.stringify({ name, ...evidence }));
@@ -69,7 +68,7 @@ try {
     claudeAcp: await packageInfo('claude-agent-acp', '0.100.0'),
     codexAcp: await packageInfo('codex-acp', '2.5.0'),
   };
-  const env = cleanEnv();
+  const env = cleanEnv(process.env, { blank: true });
   const wrapper = resolve('scripts/live-claude-executable.mjs');
   await chmod(wrapper, 0o755);
   const adapters = [
@@ -156,30 +155,26 @@ try {
 } catch (e) {
   failure = e;
 } finally {
-  // Snapshot only live descendants before closing. This is observation evidence,
-  // never authority to signal a PID after its parent/identity may have changed.
-  ownedPids = await descendants();
-  if (app) await app.close();
-  else await hub?.close();
-  for (const pid of ownedPids) {
-    try {
-      await until(() => gone(pid), 'owned managed child exit', 5000);
-      report.cleanup.push({ pid, stopped: true });
-    } catch (e) {
-      failure ??= e;
-      report.cleanup.push({ pid, exitUnconfirmed: true });
-    }
-  }
+  const cleanup = await cleanupManagedRun({
+    home: join(dir, 'codex-home'),
+    descendants,
+    close: async () => {
+      if (app) await app.close();
+      else await hub?.close();
+    },
+    waitForExit: (pid) => until(() => gone(pid), 'owned managed child exit', 5000),
+  });
+  report.cleanup.push(...cleanup.cleanup);
+  report.credentialsRemoved = cleanup.credentialsRemoved;
+  failure ??= cleanup.errors[0];
+  if (cleanup.retainDirectory) report.retainedDirectory = dir;
+  else await rm(dir, { recursive: true, force: true });
   if (!failure) check('managed_children_exit_after_close');
   report.finishedAt = new Date().toISOString();
   report.passed = !failure;
   if (failure) report.error = String(failure.stack ?? failure);
   await mkdir(resolve(reportPath, '..'), { recursive: true, mode: 0o700 });
   await writeFile(reportPath, JSON.stringify(report, null, 2), { mode: 0o600 });
-  if (report.cleanup.some((entry) => entry.exitUnconfirmed)) {
-    report.retainedDirectory = dir;
-    await writeFile(reportPath, JSON.stringify(report, null, 2), { mode: 0o600 });
-  } else await rm(dir, { recursive: true, force: true });
 }
 if (failure) {
   console.error(failure);

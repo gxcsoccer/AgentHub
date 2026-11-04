@@ -15,3 +15,7 @@ Durable state stores plaintext message/reply content, payload hashes and local r
 持久状态包含明文消息与回复、载荷哈希和本地路由信息，目录要求 0700，状态/锁文件为 0600；不要公开或复制运行中的数据库。Claude 回调复用不会增强身份认证。显式 attach 使用相同的服务级令牌权限并要求接受 resume 竞态，不构成按 agent 隔离的授权。
 
 Per-caller grants protect instance/session reads, sends, receipt events, explicit attachment, approvals and managed user prompts. In-process library callers are trusted by default. ACP commands run with their owner-configured environment and native permissions; the protocol is not a sandbox. Windows named-pipe auth tokens are secrets, and native Windows delivery remains experimental with no receipt or reply confirmation. See [extensions](docs/EXTENSIONS.md).
+
+ACP instance-wide `manage` is also an availability trust boundary: one slow or uncertain `session/new` can block further creation for every caller on that instance. Existing known sessions keep running while the connection is alive. There is no online reset/replacement endpoint. Daemon users must finish or explicitly stop existing work before restarting the Hub; library users must close and rebuild their Hub with a new adapter. Restrict `manage` to trusted operators and use separate instances where callers require independent availability.
+
+ACP 的实例级 `manage` 也是可用性信任边界：一次超时或结果不确定的 `session/new` 可阻止该实例所有调用方继续新建。连接仍在时，已有会话继续运行。当前没有在线 reset／替换接口；daemon 用户应先完成或显式结束已有工作，再重启 Hub；基础库用户须关闭并用新 adapter 重建 Hub。仅向可信运维调用方授予 `manage`，需要独立可用性时拆分实例。

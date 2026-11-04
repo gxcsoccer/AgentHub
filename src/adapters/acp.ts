@@ -184,7 +184,7 @@ export class AcpAdapter extends EventEmitter implements Adapter {
     if (this.sessionCreationBlocked)
       throw new HubError(
         'acp_creation_blocked',
-        'Session creation is blocked after an uncertain result. Owner must explicitly replace this adapter to create more sessions.',
+        'Session creation is blocked after an uncertain result. After existing work finishes, the owner must restart the Hub daemon to create more sessions; library users must close and rebuild their Hub with a new adapter.',
         503,
       );
   }

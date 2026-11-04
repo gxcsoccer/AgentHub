@@ -114,7 +114,7 @@ test('lost ACP session/new blocks further creation while existing sessions remai
   await assert.rejects(a.createSession(tmpdir()));
   assert.equal((await a.getSession(first.address)).status, 'idle');
   assert.equal((await a.getSession(first.address)).metadata?.sessionCreationBlocked, true);
-  await assert.rejects(a.createSession(tmpdir()), /creation.*blocked/i);
+  await assert.rejects(a.createSession(tmpdir()), /owner must restart the Hub daemon/i);
   assert.equal(
     (
       await a.send({

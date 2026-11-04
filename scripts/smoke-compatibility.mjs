@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
-import { exec, cleanEnv, startCodex, stopOwned } from './live-processes.mjs';
+import { execOwned, cleanEnv, startCodex, stopOwned } from './live-processes.mjs';
 if (!process.argv.includes('--run')) {
   console.log(
     'Add --run --config PATH. Each JSON array row has name, claude and codex executable paths. Only newly spawned backends/sessions are used.',
@@ -27,7 +27,7 @@ for (const row of rows) {
   let backend, run;
   try {
     backend = await startCodex(join(dir, 'backend'), row.codex);
-    run = exec(
+    run = execOwned(
       process.execPath,
       [
         resolve('scripts/smoke-isolated.mjs'),
@@ -46,7 +46,6 @@ for (const row of rows) {
         },
         timeout: 600000,
         maxBuffer: 4 * 1024 * 1024,
-        detached: true,
       },
     );
     run.child.stdout.on('data', (chunk) => process.stdout.write(chunk));

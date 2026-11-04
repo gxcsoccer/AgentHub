@@ -2,9 +2,10 @@
 import assert from 'node:assert/strict';
 import { spawn, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { mkdir, readFile, writeFile, chmod, stat } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, chmod, stat, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
+import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { CodexRpc } from '../dist/vendor/codex-bridge/src/rpc.js';
 
@@ -16,10 +17,13 @@ export const SESSION_ENV_KEYS = Object.freeze([
   'CLAUDE_CODE_MESSAGING_TOKEN',
   'CODEX_THREAD_ID',
 ]);
-export const cleanEnv = (source = process.env) => {
+export const cleanEnv = (source = process.env, { blank = false } = {}) => {
   const env = { ...source };
-  // Empty overrides remain cleared even when a launcher merges process.env.
-  for (const key of SESSION_ENV_KEYS) env[key] = '';
+  // Direct spawn gets absent keys. Only merge-based launchers need empty overrides.
+  for (const key of SESSION_ENV_KEYS) {
+    if (blank) env[key] = '';
+    else delete env[key];
+  }
   return env;
 };
 export async function until(check, label, timeoutMs = 30000) {
@@ -31,24 +35,128 @@ export async function until(check, label, timeoutMs = 30000) {
   } while (Date.now() < deadline);
   throw new Error(`Timed out: ${label}`);
 }
-export async function stopOwned(child, graceMs = 3000) {
+const ownedGroups = new WeakMap();
+export function spawnOwned(command, args = [], options = {}) {
+  assert(process.platform !== 'win32', 'Owned acceptance groups require POSIX');
+  const child = spawn(
+    process.execPath,
+    [fileURLToPath(new URL('./live-process-supervisor.mjs', import.meta.url)), command, ...args],
+    { ...options, detached: true, stdio: ['ignore', 'pipe', 'pipe', 'ipc'], shell: false },
+  );
+  const state = { ready: false, stop: undefined };
+  ownedGroups.set(child, state);
+  child.completion = new Promise((resolve) => {
+    child.on('message', (result) => {
+      if (result.ready) state.ready = true;
+      else resolve(result);
+    });
+    child.once('error', (error) => resolve({ error: error.message }));
+    child.once('exit', () =>
+      resolve({ error: 'Owned supervisor exited before command completion' }),
+    );
+  });
+  return child;
+}
+export function stopOwned(child, graceMs = 3000) {
   const running = () => child?.pid && child.exitCode === null && child.signalCode === null;
-  if (!running()) return;
-  // Only children started with detached:true by this helper own these groups.
-  const signal = (value) => {
-    try {
+  const state = ownedGroups.get(child);
+  if (!state) {
+    if (!running()) return Promise.resolve();
+    return Promise.reject(Error('Refusing to signal a process without an owned supervisor'));
+  }
+  return (state.stop ??= (async () => {
+    const signal = (value) => {
+      if (!running())
+        throw Error('Owned supervisor lost; process-group cleanup cannot be confirmed');
+      // The live supervisor reserves this PGID even after the backend command exits.
       process.kill(-child.pid, value);
-    } catch (e) {
-      if (e.code !== 'ESRCH') throw e;
-    }
+    };
+    await until(() => state.ready || !running(), 'owned supervisor ready', 5000);
+    signal('SIGTERM');
+    await delay(graceMs);
+    signal('SIGKILL');
+    await until(
+      () => !running() && child.stdout.destroyed && child.stderr.destroyed,
+      'owned process-group pipes closed',
+      3000,
+    );
+  })());
+}
+export function execOwned(command, args, options = {}) {
+  const child = spawnOwned(command, args, { env: options.env, cwd: options.cwd });
+  child.stdout.setEncoding('utf8');
+  child.stderr.setEncoding('utf8');
+  let stdout = '',
+    stderr = '',
+    capturedBytes = 0,
+    overflow = false,
+    timer;
+  const result = new Promise((resolve, reject) => {
+    const capture = (key, chunk) => {
+      if (overflow) return;
+      capturedBytes += Buffer.byteLength(chunk);
+      if (capturedBytes > (options.maxBuffer ?? 1024 * 1024)) {
+        overflow = true;
+        reject(Error('Owned command output exceeds limit'));
+        return;
+      }
+      if (key === 'stdout') stdout += chunk;
+      else stderr += chunk;
+    };
+    child.stdout.on('data', (c) => capture('stdout', c));
+    child.stderr.on('data', (c) => capture('stderr', c));
+    timer = setTimeout(() => reject(Error('Owned command timed out')), options.timeout ?? 600000);
+    child.completion.then((value) =>
+      value.code === 0
+        ? resolve()
+        : reject(Error(value.error ?? `Owned command exited: ${value.code ?? value.signal}`)),
+    );
+  })
+    .finally(async () => {
+      clearTimeout(timer);
+      await stopOwned(child, options.graceMs ?? 3000);
+    })
+    .then(() => ({ stdout, stderr }));
+  result.child = child;
+  return result;
+}
+export async function cleanupManagedRun({ home, close, descendants, waitForExit }) {
+  const result = { cleanup: [], errors: [], retainDirectory: false, credentialsRemoved: false };
+  const failed = (phase, error, extra = {}) => {
+    result.errors.push(error);
+    result.retainDirectory = true;
+    result.cleanup.push({ phase, error: String(error), ...extra });
   };
-  signal('SIGTERM');
-  const deadline = Date.now() + graceMs;
-  while (running() && Date.now() < deadline) await delay(50);
-  // Once the tracked leader exits, its numeric PGID is no longer our authority.
-  // Signal only while the ChildProcess still owns a live group leader.
-  if (running()) signal('SIGKILL');
-  await until(() => child.exitCode !== null || child.signalCode !== null, 'owned child exit', 3000);
+  try {
+    let pids = [];
+    try {
+      pids = await descendants();
+    } catch (e) {
+      failed('descendants', e);
+    }
+    try {
+      await close();
+    } catch (e) {
+      failed('close', e);
+    }
+    for (const pid of pids) {
+      try {
+        await waitForExit(pid);
+        result.cleanup.push({ pid, stopped: true });
+      } catch (e) {
+        failed('descendant', e, { pid, exitUnconfirmed: true });
+      }
+    }
+  } finally {
+    // Never retain copied authentication with debug workspaces, even when shutdown fails.
+    try {
+      await rm(home, { recursive: true, force: true });
+      result.credentialsRemoved = true;
+    } catch (e) {
+      failed('credentials', e);
+    }
+  }
+  return result;
 }
 export async function isolatedCodexHome(root) {
   await mkdir(root, { recursive: true, mode: 0o700 });
@@ -67,25 +175,22 @@ export async function startCodex(root, command = 'codex') {
   const home = await isolatedCodexHome(join(root, 'home'));
   const socketPath = join(root, 'control.sock');
   const version = (await exec(command, ['--version'], { timeout: 15000 })).stdout.trim();
-  const child = spawn(command, ['app-server', '--listen', `unix://${socketPath}`], {
+  const child = spawnOwned(command, ['app-server', '--listen', `unix://${socketPath}`], {
     cwd: root,
     env: { ...cleanEnv(), CODEX_HOME: home },
-    stdio: ['ignore', 'ignore', 'pipe'],
-    detached: true,
   });
+  child.stdout.resume();
   let stderr = '',
-    spawnError;
+    commandExit;
+  void child.completion.then((result) => {
+    commandExit = result;
+  });
   child.stderr.on('data', (c) => {
     stderr = (stderr + c).slice(-8000);
   });
-  child.on('error', (e) => {
-    spawnError = e;
-  });
   try {
     await until(async () => {
-      if (spawnError) throw spawnError;
-      if (child.exitCode !== null || child.signalCode !== null)
-        throw Error(`Owned App Server exited: ${stderr}`);
+      if (commandExit) throw Error(`Owned App Server exited: ${commandExit.error ?? stderr}`);
       return (await stat(socketPath).catch(() => null))?.isSocket();
     }, 'isolated App Server socket');
     const rpc = new CodexRpc({ socketPath });

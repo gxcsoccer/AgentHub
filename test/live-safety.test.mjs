@@ -1,11 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { spawn } from 'node:child_process';
+import { setTimeout as delay } from 'node:timers/promises';
 import { once } from 'node:events';
-import { cleanEnv, SESSION_ENV_KEYS, exec, stopOwned } from '../scripts/live-processes.mjs';
+import * as live from '../scripts/live-processes.mjs';
+const { cleanEnv, SESSION_ENV_KEYS, exec, stopOwned } = live;
 
 async function wrapperArgs(t, args) {
   const dir = await mkdtemp(join(tmpdir(), 'ah-wrapper-'));
@@ -43,9 +44,28 @@ test('session environment overrides remain cleared after parent environment merg
     KEEP: 'preserved',
     ...Object.fromEntries(SESSION_ENV_KEYS.map((key) => [key, 'parent-session'])),
   };
-  const merged = { ...parent, ...cleanEnv(parent) };
+  const merged = { ...parent, ...cleanEnv(parent, { blank: true }) };
   assert.equal(merged.KEEP, 'preserved');
   for (const key of SESSION_ENV_KEYS) assert.equal(merged[key], '');
+});
+test('directly spawned children receive absent session variables, not empty values', async () => {
+  const parent = {
+    KEEP: 'preserved',
+    ...Object.fromEntries(SESSION_ENV_KEYS.map((key) => [key, 'parent-session'])),
+  };
+  const result = await exec(
+    process.execPath,
+    [
+      '-e',
+      `process.stdout.write(JSON.stringify(Object.fromEntries(${JSON.stringify(SESSION_ENV_KEYS)}.map(k => [k, Object.hasOwn(process.env, k)]))))`,
+    ],
+    { env: cleanEnv(parent) },
+  );
+  assert.deepEqual(
+    JSON.parse(result.stdout),
+    Object.fromEntries(SESSION_ENV_KEYS.map((k) => [k, false])),
+  );
+  assert.equal(parent.CODEX_THREAD_ID, 'parent-session');
 });
 test('Claude wrapper handles equals forms, repeated options and variadic values', async (t) => {
   const args = await wrapperArgs(t, [
@@ -100,44 +120,162 @@ test('an exited leader is never used as authority to signal a recycled group', a
   });
   await stopOwned({ pid: 123456789, exitCode: 0, signalCode: null });
   assert.deepEqual(signals, []);
-});
-async function childFixture(t, ignoreTerm) {
-  const child = spawn(
-    process.execPath,
-    [
-      '-e',
-      `${ignoreTerm ? "process.on('SIGTERM', () => {});" : ''}setInterval(() => {}, 1000); process.stdout.write('ready');`,
-    ],
-    { detached: true, stdio: ['ignore', 'pipe', 'ignore'] },
+  await assert.rejects(
+    stopOwned({ pid: 123456789, exitCode: null, signalCode: null }),
+    /without an owned supervisor/,
   );
-  t.after(() => {
-    if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
-  });
+  assert.deepEqual(signals, []);
+});
+async function childFixture(t, code) {
+  const child = live.spawnOwned(process.execPath, ['-e', code]);
+  t.after(() =>
+    stopOwned(child, 50).catch((e) => {
+      if (!child.expectedSupervisorLoss) throw e;
+    }),
+  );
   await once(child.stdout, 'data');
   return child;
 }
-test('graceful owned process exit does not escalate to a group SIGKILL', async (t) => {
-  const child = await childFixture(t, false),
-    signals = [],
-    kill = process.kill.bind(process);
-  t.mock.method(process, 'kill', (pid, signal) => {
-    signals.push(signal);
-    return kill(pid, signal);
+test('graceful command exit keeps the owned group reserved until explicit cleanup', async (t) => {
+  const child = await childFixture(t, "process.stdout.write('ready');"),
+    result = await child.completion;
+  assert.equal(result.code, 0);
+  assert.equal(child.exitCode, null);
+  assert.equal(child.signalCode, null);
+  await stopOwned(child, 50);
+  assert.notEqual(child.signalCode, null);
+  const signals = [];
+  t.mock.method(process, 'kill', (...args) => {
+    signals.push(args);
+    return true;
   });
-  await stopOwned(child, 1000);
-  assert.deepEqual(signals, ['SIGTERM']);
-  await stopOwned(child, 1000);
-  assert.deepEqual(signals, ['SIGTERM']);
+  await stopOwned(child, 50);
+  assert.deepEqual(signals, []);
 });
-test('a still-owned live leader is force-stopped only after the grace period', async (t) => {
-  const child = await childFixture(t, true),
+test('a still-owned live group is force-stopped only after the grace period', async (t) => {
+  const child = await childFixture(
+      t,
+      "process.on('SIGTERM', () => {}); setInterval(() => {}, 1000); process.stdout.write('ready');",
+    ),
     signals = [],
     kill = process.kill.bind(process);
   t.mock.method(process, 'kill', (pid, signal) => {
     signals.push(signal);
     return kill(pid, signal);
   });
+  const started = Date.now();
   await stopOwned(child, 100);
+  assert(Date.now() - started >= 100);
   assert.deepEqual(signals, ['SIGTERM', 'SIGKILL']);
   assert.equal(child.signalCode, 'SIGKILL');
 });
+test('command exit before its SIGTERM-resistant descendant does not leave the descendant running', async (t) => {
+  // The descendant owns stdout until it exits. Its ten-second self-exit bounds a broken cleanup.
+  const descendant =
+    "process.on('SIGTERM',()=>{}); process.on('SIGHUP',()=>{}); process.stdout.write('ready'); setTimeout(()=>process.exit(0),10000);";
+  const child = await childFixture(
+    t,
+    `const {spawn}=require('node:child_process'); const c=spawn(process.execPath,['-e',${JSON.stringify(descendant)}],{stdio:['ignore','inherit','ignore']}); c.unref();`,
+  );
+  assert.equal((await child.completion).code, 0);
+  const outputClosed = once(child.stdout, 'close');
+  await stopOwned(child, 100);
+  // An open pipe would mean the descendant survived the supervisor's group shutdown.
+  await Promise.race([
+    outputClosed,
+    delay(1500).then(() => {
+      throw Error('descendant survived cleanup');
+    }),
+  ]);
+});
+test('loss of the supervisor fails cleanup without signalling a possibly recycled group', async (t) => {
+  const child = await childFixture(t, "process.stdout.write('ready');");
+  await child.completion;
+  child.expectedSupervisorLoss = true;
+  child.kill('SIGKILL');
+  await once(child, 'exit');
+  const signals = [];
+  t.mock.method(process, 'kill', (...args) => {
+    signals.push(args);
+    return true;
+  });
+  await assert.rejects(stopOwned(child, 50), /supervisor/i);
+  assert.deepEqual(signals, []);
+});
+test('controller IPC loss terminates the anchored group without leaving its command', async (t) => {
+  const child = await childFixture(t, "setInterval(()=>{},1000); process.stdout.write('ready');");
+  child.expectedSupervisorLoss = true;
+  const exited = once(child, 'exit');
+  child.disconnect();
+  await exited;
+  await live.until(
+    () => child.stdout.destroyed && child.stderr.destroyed,
+    'controller-loss pipe closure',
+    1500,
+  );
+  assert.equal(child.signalCode, 'SIGKILL');
+  assert(child.stdout.destroyed);
+});
+for (const phase of ['descendants', 'close', 'descendant']) {
+  test(`copied credentials are removed even when ${phase} cleanup fails and workspace is retained`, async (t) => {
+    const dir = await mkdtemp(join(tmpdir(), 'ah-cleanup-'));
+    t.after(() => rm(dir, { recursive: true, force: true }));
+    const home = join(dir, 'codex-home'),
+      workspace = join(dir, 'workspace');
+    await mkdir(home);
+    await mkdir(workspace);
+    await writeFile(join(home, 'auth.json'), 'synthetic credential');
+    await writeFile(join(workspace, 'log'), 'debug evidence');
+    let closeCalled = false;
+    const result = await live.cleanupManagedRun({
+      home,
+      descendants: async () => {
+        if (phase === 'descendants') throw Error('fixture snapshot failure');
+        return [123];
+      },
+      close: async () => {
+        closeCalled = true;
+        if (phase === 'close') throw Error('fixture close failure');
+      },
+      waitForExit: async () => {
+        if (phase === 'descendant') throw Error('fixture live descendant');
+      },
+    });
+    assert(closeCalled);
+    assert.equal(result.errors.length, 1);
+    assert.equal(result.credentialsRemoved, true);
+    assert.equal(result.retainDirectory, true);
+    await assert.rejects(stat(home), { code: 'ENOENT' });
+    assert.equal(await readFile(join(workspace, 'log'), 'utf8'), 'debug evidence');
+  });
+}
+
+test('owned command capture drains output and stops its supervisor after completion', async () => {
+  const run = live.execOwned(
+    process.execPath,
+    [
+      '-e',
+      "const b=Buffer.from('验收'); process.stdout.write(b.subarray(0,1)); setTimeout(()=>{process.stdout.write(b.subarray(1)); process.stderr.write('diagnostic');},10);",
+    ],
+    { graceMs: 50 },
+  );
+  assert.deepEqual(await run, { stdout: '验收', stderr: 'diagnostic' });
+  assert.notEqual(run.child.signalCode, null);
+});
+for (const [name, code, options, error] of [
+  ['failure', 'process.exit(7)', {}, /exited: 7/],
+  ['early timeout', 'setInterval(()=>{},1000)', { timeout: 1 }, /timed out/],
+  [
+    'output limit',
+    "setInterval(()=>process.stdout.write('xxxxxxxx'),1)",
+    { maxBuffer: 4 },
+    /output exceeds/,
+  ],
+]) {
+  test(`owned command ${name} still closes its supervisor and pipes`, async () => {
+    const run = live.execOwned(process.execPath, ['-e', code], { ...options, graceMs: 50 });
+    await assert.rejects(run, error);
+    assert.notEqual(run.child.signalCode, null);
+    assert(run.child.stdout.destroyed);
+  });
+}

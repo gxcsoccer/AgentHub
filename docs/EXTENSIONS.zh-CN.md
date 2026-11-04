@@ -59,7 +59,7 @@ SDK 提供 createSession、prompt、cancel；HTTP 为 POST /v1/sessions、/v1/pr
 
 审批沿用 interaction 接口，显式选择后端给出的 optionId 或取消；超时、取消和关闭都取消待审批请求。客户端不提供文件系统和终端执行能力，但 ACP 本身不是执行沙箱，后端自身执行权限仍由所有者配置。托管历史每会话最多 200 条／1 MiB 文本、最多 100 个会话，仅保存在当前进程，不是原生历史恢复。
 
-`session/new` 失败不会关闭共享后端，也不会中断已有 prompt 和审批。明确的无效请求、方法不存在、参数错误或需要认证的拒绝允许后续再次创建。超时、内部错误或无效结果可能掩盖已创建的原生会话，因此阻止后续创建，返回 `acp_creation_blocked`，会话 metadata 标记 `sessionCreationBlocked: true`。连接仍在时，已知会话继续可用。所有者处理完这些会话后，须显式关闭并替换 adapter（或重启其 Hub），才能继续创建；不会自动重启或重放。[真实后端验收](ACCEPTANCE.zh-CN.md) 将实际 Claude／Codex ACP 模型回复与协议测试进程的结果分开记录。
+`session/new` 失败不会关闭共享后端，也不会中断已有 prompt 和审批。明确的无效请求、方法不存在、参数错误或需要认证的拒绝允许后续再次创建。超时、内部错误或无效结果可能掩盖已创建的原生会话，因此阻止后续创建，返回 `acp_creation_blocked`，会话 metadata 标记 `sessionCreationBlocked: true`。连接仍在时，已知会话继续可用。处理完这些会话后，daemon／HTTP 用户须显式重启 Hub daemon 才能继续创建；基础库用户须关闭并用新 adapter 重建 Hub。当前没有原地 reset／替换接口，也不会自动重启或重放。持有实例级 `manage` 的调用方可通过慢请求或失败请求触发该阻断，影响该实例所有调用方的新建操作，已知会话仍可用。仅向可信运维调用方授予 `manage`；需要独立可用性时使用独立实例。[真实后端验收](ACCEPTANCE.zh-CN.md) 将实际 Claude／Codex ACP 模型回复与协议测试进程的结果分开记录。
 
 官方来源：[初始化](https://agentclientprotocol.com/protocol/v1/initialization)、[会话](https://agentclientprotocol.com/protocol/v1/session-setup)、[prompt](https://agentclientprotocol.com/protocol/v1/prompt-turn)、[TypeScript SDK](https://agentclientprotocol.com/libraries/typescript)。
 
