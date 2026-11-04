@@ -9,7 +9,7 @@ npm ci
 npm run check
 ```
 
-当前在 Linux/macOS 包含 97 项 AgentHub、原 Codex Session Bridge 的 41 项及 18 项真实验收脚本防护测试，共 156 项，并执行格式、严格 TypeScript 和覆盖率门槛检查。原 Bridge 从自己的目录运行测试，保留其原始路径与契约。
+当前在 Linux/macOS 包含 97 项 AgentHub、原 Codex Session Bridge 的 41 项及 21 项真实验收脚本防护测试，共 159 项，并执行格式、严格 TypeScript 和覆盖率门槛检查。原 Bridge 从自己的目录运行测试，保留其原始路径与契约。
 
 新增测试覆盖：并发幂等、容量/过期、载荷冲突、不确定投递、提前/迟到回复、有限回复转发、关闭竞态、Codex 工具输出与显式审批、Claude 本地 socket 协议和反向回调、策略控制帧、损坏/过期回调、历史大小和游标变化、认证/Origin、非法 HTTP 请求、原有 JSON CLI 命令、真实 stdio 子进程中的七个 MCP 工具、SSE 慢消费者/CRLF/多行数据以及 OpenAPI 一致性。
 
@@ -147,3 +147,5 @@ Node 26.12.1 上 `npm run check` 通过 97 项 AgentHub、41 项原 Bridge、七
 本地检查通过 97 项 AgentHub、41 项原 Bridge、18 项脚本防护测试，共 156 项；源码覆盖率为行 96.43%、分支 87.27%、函数 93.98%。最后调整 UTF-8 输出捕获和失败命令诊断输出保留后，脚本测试再次通过。新增用例覆盖直接启动时变量真正不存在、主命令先于抗 TERM 后代退出、控制器 IPC 丢失、监督进程意外丢失后不向旧组发信号、受限输出捕获／失败／超时，以及后代发现、关闭或退出检查失败后的凭证删除。首次控制器断开测试等待 `close` 事件超时，实际进程和管道已退出；现直接检查这两个真实后置条件。失败记录保留在私有 `review-followup-check-first.log`。
 
 真实 ACP 使用 Claude 2.1.318 / Codex 0.166.0，七项通过，确认后代退出并报告 `credentialsRemoved: true`。独立原生后端使用 Claude 2.1.318、Codex 0.166.0 / 0.165.0 和新监督进程，七项通过。私有报告为 `.local/verification/review-followup-acp-live.json`、`review-followup-independent-backends.json`。安装包再次通过五个导出入口、两个 CLI、HTTP、SQLite 和空事件游标恢复验证。原生协议和负载代码未变，本次未重跑完整版本矩阵和 30 分钟合成负载；兼容性运行器的新命令包装由确定性命令测试覆盖，没有将其描述成重新完成全部原生矩阵。
+
+最后的诊断修复：`npm run check` 通过 159 项测试（97 项 AgentHub、41 项 Bridge、21 项脚本测试）。新增三项隔离进程用例，验证二次清理失败时仍保留原始命令／启动异常和 stderr，且单独清理失败仍会报错。保留三秒宽限期，因为主命令退出不能证明后代完成清理。本次仅修改错误报告，未重跑真实模型验收和长时间负载。

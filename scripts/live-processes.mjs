@@ -73,6 +73,7 @@ export function stopOwned(child, graceMs = 3000) {
     };
     await until(() => state.ready || !running(), 'owned supervisor ready', 5000);
     signal('SIGTERM');
+    // Command exit alone does not prove that its descendants finished shutting down.
     await delay(graceMs);
     signal('SIGKILL');
     await until(
@@ -90,6 +91,7 @@ export function execOwned(command, args, options = {}) {
     stderr = '',
     capturedBytes = 0,
     overflow = false,
+    primaryError,
     timer;
   const result = new Promise((resolve, reject) => {
     const capture = (key, chunk) => {
@@ -112,9 +114,18 @@ export function execOwned(command, args, options = {}) {
         : reject(Error(value.error ?? `Owned command exited: ${value.code ?? value.signal}`)),
     );
   })
+    .catch((error) => {
+      primaryError = error;
+      throw error;
+    })
     .finally(async () => {
       clearTimeout(timer);
-      await stopOwned(child, options.graceMs ?? 3000);
+      try {
+        await stopOwned(child, options.graceMs ?? 3000);
+      } catch (cleanupError) {
+        if (!primaryError) throw cleanupError;
+        primaryError.cleanupError = cleanupError;
+      }
     })
     .then(() => ({ stdout, stderr }))
     .catch((error) => {
@@ -201,7 +212,10 @@ export async function startCodex(root, command = 'codex') {
     assert.equal((await rpc.request('thread/loaded/list')).data.length, 0);
     return { child, rpc, home, socketPath, version, stop: () => stopOwned(child) };
   } catch (e) {
-    await stopOwned(child);
+    e.stderr = stderr;
+    await stopOwned(child).catch((cleanupError) => {
+      e.cleanupError = cleanupError;
+    });
     throw e;
   }
 }

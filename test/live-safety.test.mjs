@@ -291,3 +291,79 @@ for (const [name, code, options, error] of [
     assert(run.child.stdout.destroyed);
   });
 }
+
+for (const code of [7, 0]) {
+  test(`supervisor loss after command exit ${code} preserves the correct primary error`, async (t) => {
+    let run, termSent;
+    const term = new Promise((resolve) => {
+      termSent = resolve;
+    });
+    const kill = process.kill.bind(process);
+    t.mock.method(process, 'kill', (pid, signal) => {
+      const result = kill(pid, signal);
+      if (pid === -run.child.pid && signal === 'SIGTERM') termSent();
+      return result;
+    });
+    run = live.execOwned(
+      process.execPath,
+      [
+        '-e',
+        `process.stdout.write('command output'); process.stderr.write('command diagnostic'); process.exitCode=${code};`,
+      ],
+      { graceMs: 100 },
+    );
+    // Observe rejection immediately, before deliberately losing this test's supervisor.
+    const failure = run.then(
+      () => assert.fail('cleanup must fail'),
+      (error) => error,
+    );
+    assert.equal((await run.child.completion).code, code);
+    await term;
+    const exited = once(run.child, 'exit');
+    assert(run.child.kill('SIGKILL'));
+    await exited;
+    const error = await failure;
+    if (code !== 0) {
+      assert.match(error.message, /Owned command exited: 7/);
+      assert.match(error.cleanupError?.message ?? '', /supervisor lost/i);
+    } else {
+      assert.match(error.message, /supervisor lost/i);
+      assert.equal(error.cleanupError, undefined);
+    }
+    assert.equal(error.stdout, 'command output');
+    assert.equal(error.stderr, 'command diagnostic');
+  });
+}
+
+test('App Server startup failure retains stderr and attaches a later cleanup error', async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), 'ah-start-error-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const auth = join(dir, 'synthetic-auth');
+  await mkdir(auth);
+  await writeFile(join(auth, 'auth.json'), '{"synthetic":true}', { mode: 0o600 });
+  const previousHome = process.env.CODEX_HOME;
+  process.env.CODEX_HOME = auth;
+  t.after(() => {
+    if (previousHome === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = previousHome;
+  });
+  const command = join(dir, 'fixture.mjs');
+  await writeFile(
+    command,
+    `#!/usr/bin/env node
+if (process.argv.includes('--version')) process.stdout.write('fixture 1');
+else process.stderr.write('fixture startup diagnostic', () => {
+  // This parent is the supervisor created exclusively for this fake command.
+  process.kill(process.ppid, 'SIGKILL');
+  process.exitCode = 7;
+});
+`,
+    { mode: 0o700 },
+  );
+  await assert.rejects(live.startCodex(join(dir, 'backend'), command), (error) => {
+    assert.match(error.message, /^Owned App Server exited:/);
+    assert.match(error.stderr ?? '', /fixture startup diagnostic/);
+    assert.match(error.cleanupError?.message ?? '', /supervisor lost/i);
+    return true;
+  });
+});

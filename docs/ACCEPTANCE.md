@@ -59,3 +59,5 @@ node --expose-gc scripts/soak.mjs --seconds 1800 --report .local/verification/so
 The bounded run exercises actual HTTP/SSE/SQLite with a synthetic owned adapter, eight concurrent submissions and four consumer connections per batch, periodic server/storage reopening, deduplication, cursor continuity and resource thresholds. It is not a real-model load test or proof of production stability. Duration is validated as an integer between 5 and 3600 seconds. The separate **Extended synthetic soak** workflow can be dispatched manually after it is merged into the default branch; only its synthetic report is uploaded, never model transcripts or credentials.
 
 Windows work and Doubao runtime integration remain outside this acceptance expansion.
+
+Cleanup preserves the original command/startup error and captured stderr, attaching a secondary failure as `cleanupError`. A cleanup failure after successful work still fails the run. The default three-second shutdown grace period is retained for descendants even when the main command has already exited.
