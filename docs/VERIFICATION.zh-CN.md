@@ -1,0 +1,111 @@
+# 验证说明
+
+[English](VERIFICATION.md)
+
+## 自动化检查
+
+```sh
+npm ci
+npm run check
+```
+
+当前包含 91 项 HarnessHub 测试与原 Codex Session Bridge 的 41 项测试，共 132 项通过，并执行格式、严格 TypeScript 和覆盖率门槛检查。原 Bridge 从自己的目录运行测试，保留其原始路径与契约。
+
+新增测试覆盖：并发幂等、容量/过期、载荷冲突、不确定投递、提前/迟到回复、有限回复转发、关闭竞态、Codex 工具输出与显式审批、Claude 本地 socket 协议和反向回调、策略控制帧、损坏/过期回调、历史大小和游标变化、认证/Origin、非法 HTTP 请求、全部 JSON CLI 命令、真实 stdio 子进程中的七个 MCP 工具、SSE 慢消费者/CRLF/多行数据以及 OpenAPI 一致性。
+
+Node 25.9.0 的 V8 统计显示，新代码编译产物 `dist/src/**/*.js` 的行覆盖率为 96.39%、分支 87.04%、函数 93.92%，不含原 Bridge 和真实 smoke 脚本。`npm run test:coverage` 强制总体门槛 90%/80%/85%，已纳入 check 和 CI。覆盖率不能证明穷尽行为或真实兼容。本轮测试发现并修复了非法 URL 返回 500、SSE 结束后继续写入、CRLF/数据块解析错误、构造失败遗留监听器和非 Error 异常处理问题。
+
+新增测试覆盖 SQLite 事务回滚、保留期、损坏/schema/路径拒绝、写盘失败、单实例锁、HTTP/CLI 显式 attach 和保守的工具就绪判断。独立测试子进程在原消息提交、回复转发提交时被实际 SIGKILL，验证锁释放、不重发不确定消息、固定 ID 保留，以及模拟 Claude 迟到回复重新绑定原 socket 后只转发一次。
+
+适配器单元测试使用假对端或 RPC，不代表真实模型已收到消息。完整检查已在本机 Node 22.23.2 和 25.9.0 上通过。CI 配置覆盖 Linux/macOS、Node 22/24，不使用真实凭证或执行模型测试；本轮尚未验证远端 CI、Linux 和 Node 24 的运行结果。
+
+## 真实跨 harness 验证
+
+2026-11-04，在 macOS、Node 25.9.0、Codex CLI/App Server 0.166.0、Claude Code 2.1.318 上完成以下验收：
+
+| 验收           | Claude 寻址                                                               | 结果                                      |
+| -------------- | ------------------------------------------------------------------------- | ----------------------------------------- |
+| 私有 inbox     | 显式绑定新建测试会话和私有 socket                                         | 通过                                      |
+| 默认 inbox     | 生产代码通过 `claude agents --json` 发现，使用 `/tmp/cc-socks/<pid>.sock` | 通过                                      |
+| 入口与异常矩阵 | 默认发现/inbox，HTTP SDK、JSON CLI、MCP stdio 和 SSE                      | 14 项检查通过，含运行后的只读归档历史审查 |
+
+最初两次使用本项目实际适配器和 Hub，验证以下闭环：
+
+1. 在临时工作目录中新建 allowlist 中的 Codex thread 和独立 Claude 进程。
+2. 向 Codex 发送工具输出；Codex 调用会话所有者注册的测试委派工具。
+3. 经原生 inbox 将消息发送给 Claude。
+4. Claude 用原生 `SendMessage` 回复 Hub 回调 socket。
+5. Hub 将关联回复作为工具输出转发给 Codex；Codex 通过 `harnesshub_reply` 确认。
+6. 检查消息 ID、内容与历史身份：Codex 没有用户输入注入，Claude 保存 peer 来源。
+7. 停止本次 Claude 进程，归档并确认卸载本次 Codex thread，删除临时工作目录。
+
+最初每次四项功能检查均通过。扩展矩阵进一步验证：
+
+- JSON CLI 经 HTTP 提交，SDK 驱动跨 harness 委派，独立 stdio 进程逐个调用七个 MCP 工具，SSE 返回关联回复。
+- Claude hold 后释放、refuse、相同载荷重试和不同载荷冲突、忙碌排队、状态等待超时与迟到回复。专用 gate 工具确保目标确实处于忙碌状态。
+- Codex 忙碌时加入同一 turn、去重、显式回答 gate，以及没有回复工具的会话接收消息后仍不虚报关联回复。
+- 传输断连时报告缺口、保留回执、重新读取历史，不自动重发或 attach。
+- 故障代理将消息转交真实 Claude inbox 后故意不关闭传输：提交方报告 unknown，原生历史证明消息已投递一次，同 ID 重试不重发。
+- Claude 目标退出后拒绝新输入，不自动恢复；两个测试 Codex thread 的原生历史身份与工具范围检查。
+
+清理结果为 `allOwnedUnloaded: true`、`onlyOwnedSessionsMutated: true`，矩阵会有意停止自己的 Claude 目标。没有向已有工作会话发消息、恢复、中断、回答审批或修改配置。Claude 原生 peer 身份对应 Hub 进程；上游作者保存在 envelope 中，不是另一个经过认证的原生 peer。
+
+**恢复能力补充：**早期矩阵因 turn/start 不恢复监听关系，在 Codex 重连后等待关联回复超时；失败证据仍保留在 `.local/verification/entrypoints-matrix-reply-recovery-failed.json`。现在已提供所有者显式 attach，未实现静默恢复。
+
+新增真实恢复验收的 **6 项功能检查与清理全部通过**，报告为 `.local/verification/recovery.json`：
+
+1. 只读就绪检查，拒绝未加载或无法核验工具的目标，无隐式 resume。
+2. Codex 在测试 gate 中忙碌时断连，显式重新 attach 后原轮次继续并返回关联回复。
+3. 让真实 Claude 在回复前等待，SIGKILL Hub 子进程，以同一个 SQLite 文件重启、显式重新 attach Codex，再释放 Claude；原生 SendMessage 回到原 socket，回复只转发一次并收到 Codex 确认。
+4. 再次重启，完成回执和转发 ID 仍在；同载荷去重，不同载荷冲突。
+5. 三次显式 attach 保持模型、目录、审批策略/reviewer、read-only 沙箱和关闭执行网络不变。
+6. 原生历史身份及提交次数准确：Claude 一条 peer 消息，Codex 三条工具输出（包含控制器初始化）；没有 shell、文件、网页操作或用户输入注入。
+
+本次使用新建 Claude 进程的显式私有 inbox 和三个 allowlist 中的 Codex thread。测试进程全部退出，Codex 测试会话全部归档/卸载，写操作只作用于这些会话。不证明 Hub 停机期间回调可重放、机器断电恢复、任意会话动态装工具或监听自动恢复；该历史验收当时使用进程内 SSE；新增 schema 2 已单独覆盖持久游标。
+
+恢复改动完成后再次运行原有真实矩阵，14 项运行内检查全部通过，报告为 `.local/verification/entrypoints-matrix-after-recovery.json`，归档/卸载和测试进程清理成功。此前 14 项报告额外包含一次运行后的只读审查，两者分开记录。
+
+两份前置失败报告保留：`recovery-first.json` 发现刚创建但从未运行的 Codex 会话可能尚未持久化工具元数据，此时正确返回 unknown；`recovery-second.json` 的六项功能检查通过，但清理时重复归档了已归档会话。最终脚本先初始化自己的隔离已有会话，并记录已完成的清理动作。
+
+手动复现需要已运行的 Codex App Server 和已登录的 CLI：
+
+```sh
+# 不带 --run 不执行真实动作。
+npm run smoke:isolated
+npm run smoke:isolated -- --run --report .local/verification/cross-harness.json
+npm run smoke:isolated -- --run --default-inbox --report .local/verification/cross-harness-default.json
+npm run smoke:isolated -- --run --default-inbox --matrix --report .local/verification/entrypoints-matrix.json
+npm run smoke:recovery -- --run --report .local/verification/recovery.json
+```
+
+脚本会消耗模型额度。Codex 使用 read-only 沙箱、untrusted 审批、关闭执行网络和限定测试工具；Claude 开放 `SendMessage`，仅在矩阵/恢复测试中额外开放本地 gate MCP 工具，不提供 shell 或文件工具。控制器只改变新建测试 Claude 进程的接收策略。原生日志仍保存在各自历史中。报告含私有会话与环境信息，权限为 0600，仅存于忽略的 `.local/verification/`，不可公开发布。
+
+## 只读 doctor 验收
+
+新增 8 项自动测试覆盖诊断的 GET-only 行为、缺少/未 attach 的回复工具、Claude opt-in/版本/inbox 区别、认证失败、超时不重试、非法响应、局部故障、32 实例/4 并发上限、内容省略和 CLI 退出码。
+
+本机真实只读检查完成三项：默认实例诊断、一个已加载 Codex 根会话、一个运行中 Claude 会话。Codex 目标如实返回缺少回复工具的 warning；Claude 报告声明的能力及 `processVersionVerified:false`。报告为 `.local/verification/doctor-readonly.json`。原生 RPC 被限制为 thread/list、thread/loaded/list、thread/read；所有 HTTP 请求均为 GET，未发送、attach、建立回调或改变已有会话。此测试不代替上文的真实收发验收。
+
+```sh
+npm run smoke:doctor -- --run
+```
+
+## 验证边界
+
+- 矩阵覆盖上述具体场景，不代表所有组合、长时间负载、全部审批子类型或所有 harness/provider 版本。主要 CLI 命令和 MCP 工具逐个执行，分支覆盖仍非 100%。
+- 未验证豆包运行时，Windows 原生模型收发尚未实测、任意已有会话动态注册工具，也不等价于 Codex 原生 agent mailbox。
+- MCP 已通过真实 stdio、HTTP 连接到实际 harness，但仍不证明豆包接受某个插件配置。
+- 原 Bridge 历史上的 22 操作真实验收见 `vendor/codex-bridge/docs/VERIFICATION.zh-CN.md`；不代表本次重新实测了这 22 项，也不代表已将它们全部统一为新 API。
+- 安装的 CLI 版本不能证明每个已运行 Claude 进程的版本。原生协议适配仍为需要显式开启的指定版本实现。
+
+## 安装包
+
+`npm pack` 会先编译。包的白名单包含编译后的库/CLI、原 Bridge、许可证、schema、文档和示例，不包含真实报告、调研缓存或测试会话。发布前应在空临时项目中安装 tarball，验证五个导出入口和两个 CLI 的 help，再执行完整检查。检查和 smoke 命令不会发布包。
+
+## 扩大验收（2026-11-04）
+
+smoke:claude-initiated -- --run 通过五项检查：真实 Claude 模型主动调用 MCP，分别向两个逻辑 Codex 实例发消息并查询关联回复；两个连接共用一个 App Server，不等同两个独立后端。验证历史／全文检索不串线，错误实例地址被权限拦截。两个新建 Codex 会话均已归档，Claude 子进程退出。私有报告：.local/verification/claude-initiated.json。
+
+新增自动测试覆盖调用方发现／历史／回执／SSE／审批隔离、私有凭证文件、事件 schema 迁移与原子回滚、全文扫描，以及官方 ACP SDK 与真实 fixture 子进程互通。fixture 不是 coding 模型；Windows pipe 测试也不等于原生 Claude 模型收件。详见[扩展边界](EXTENSIONS.zh-CN.md)。
+
+120 秒合成负载通过：3,352 次 HTTP 提交、442 次重复提交核验、23 次 SQLite／服务重开；原生提交次数与唯一请求一致，事件游标跨重启保留。GC 后堆增长约 3.7 MiB、RSS 增长约 69.4 MiB，活动资源始终为 4。这是有界负载验收，不代表长期生产稳定性。更长运行和远端 CI 完成后单独记录。

@@ -1,0 +1,4 @@
+{
+  "codex": [{ "instance": "local" }],
+  "claude": [{ "instance": "local", "nativeMessaging": true }]
+}

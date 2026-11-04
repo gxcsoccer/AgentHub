@@ -1,0 +1,91 @@
+{
+  "name": "harnesshub",
+  "version": "0.1.0",
+  "description": "One API across coding harnesses: existing sessions, messages and explicit delivery semantics.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "bin": {
+    "harnesshub": "dist/src/cli.js",
+    "codex-session-bridge": "dist/vendor/codex-bridge/src/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./client": {
+      "types": "./dist/src/client.d.ts",
+      "import": "./dist/src/client.js"
+    },
+    "./mcp": {
+      "types": "./dist/src/mcp.d.ts",
+      "import": "./dist/src/mcp.js"
+    },
+    "./codex-bridge": {
+      "types": "./dist/vendor/codex-bridge/src/server.d.ts",
+      "import": "./dist/vendor/codex-bridge/src/server.js"
+    },
+    "./codex-bridge/client": {
+      "types": "./dist/vendor/codex-bridge/src/sdk.d.ts",
+      "import": "./dist/vendor/codex-bridge/src/sdk.js"
+    }
+  },
+  "files": [
+    "dist/src",
+    "dist/vendor/codex-bridge/src",
+    "vendor/codex-bridge/LICENSE",
+    "vendor/codex-bridge/openapi.json",
+    "openapi.json",
+    "docs",
+    "examples",
+    "README.md",
+    "README.zh-CN.md",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "schema": "npm run build && node scripts/export-openapi.mjs && prettier --write openapi.json",
+    "test": "npm run build && node --test --test-timeout=30000 dist/test/*.test.js",
+    "test:coverage": "npm run build && node --test --test-timeout=30000 --experimental-test-coverage --test-coverage-include='dist/src/**/*.js' --test-coverage-lines=90 --test-coverage-branches=80 --test-coverage-functions=85 dist/test/*.test.js",
+    "test:codex": "npm --prefix vendor/codex-bridge test",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "npm run format:check && npm run typecheck && npm run test:coverage && npm run test:codex",
+    "smoke:isolated": "npm run build && node scripts/smoke-isolated.mjs",
+    "prepack": "npm run build",
+    "smoke:recovery": "npm run build && node scripts/smoke-recovery.mjs",
+    "smoke:doctor": "npm run build && node scripts/smoke-doctor-readonly.mjs",
+    "smoke:claude-initiated": "npm run build && node scripts/smoke-claude-initiated.mjs",
+    "test:soak": "npm run build && node --expose-gc scripts/soak.mjs --seconds 30"
+  },
+  "dependencies": {
+    "@agentclientprotocol/sdk": "2.4.0",
+    "@modelcontextprotocol/server": "2.4.0",
+    "ws": "8.22.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "2.4.0",
+    "@types/node": "^22.19.0",
+    "@types/ws": "^8.18.1",
+    "prettier": "3.6.2",
+    "typescript": "~5.9.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gxcsoccer/HarnessHub.git"
+  },
+  "homepage": "https://github.com/gxcsoccer/HarnessHub#readme",
+  "bugs": {
+    "url": "https://github.com/gxcsoccer/HarnessHub/issues"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org",
+    "access": "public"
+  }
+}

@@ -1,0 +1,64 @@
+{
+  "name": "codex-session-bridge",
+  "version": "0.1.0",
+  "description": "A local HTTP API and SDK for communicating with existing Codex sessions.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/gxcsoccer/Codex-MultiAgentV2.git"
+  },
+  "bin": {
+    "codex-session-bridge": "dist/src/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/src/sdk.d.ts",
+      "import": "./dist/src/sdk.js"
+    },
+    "./server": {
+      "types": "./dist/src/server.d.ts",
+      "import": "./dist/src/server.js"
+    }
+  },
+  "files": [
+    "dist/src",
+    "src",
+    "docs",
+    "openapi.json",
+    "README.md",
+    "README.zh-CN.md",
+    "CONTRIBUTING.md",
+    "CONTRIBUTING.zh-CN.md",
+    "SECURITY.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.browser.json",
+    "test": "npm run build && node --test dist/test/*.test.js test/*.test.mjs",
+    "test:coverage": "npm run build && node --experimental-test-coverage --test dist/test/*.test.js test/*.test.mjs",
+    "start": "node dist/src/cli.js",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "schema": "npm run build && node dist/src/export-openapi.js && prettier --write openapi.json",
+    "smoke:readonly": "npm run build && node scripts/smoke-readonly.mjs",
+    "smoke:live": "npm run build && node scripts/smoke-live.mjs",
+    "smoke:isolated": "npm run build && node scripts/smoke-suite.mjs",
+    "check": "npm run format:check && npm run typecheck && npm test",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "ws": "8.22.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.0",
+    "@types/ws": "^8.18.1",
+    "prettier": "3.6.2",
+    "typescript": "~5.9.3"
+  }
+}

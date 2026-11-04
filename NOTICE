@@ -1,0 +1,5 @@
+HarnessHub includes Codex Session Bridge, MIT licensed.
+Source: https://github.com/gxcsoccer/Codex-MultiAgentV2
+Imported commit: 8009999228c1d1002bf514f7d2e6ce92e0054ced
+The tracked snapshot is retained under vendor/codex-bridge, including its license and tests.
+New cross-harness code lives under src. No private verification reports were imported.
