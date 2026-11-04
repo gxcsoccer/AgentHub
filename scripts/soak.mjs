@@ -7,8 +7,16 @@ import { mkdtemp, rm, mkdir, writeFile, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { AgentHub, AgentHubClient, createHubServer, openReceiptStore } from '../dist/src/index.js';
-const duration = Number(process.argv[process.argv.indexOf('--seconds') + 1] || 30);
-assert(duration >= 5 && duration <= 3600);
+const args = process.argv.slice(2);
+const option = (name, fallback) => {
+  const index = args.indexOf(name);
+  if (index < 0) return fallback;
+  assert(args[index + 1] && !args[index + 1].startsWith('--'), `${name} needs a value`);
+  return args[index + 1];
+};
+const duration = Number(option('--seconds', '30'));
+assert(Number.isInteger(duration) && duration >= 5 && duration <= 3600);
+const reportPath = resolve(option('--report', '.local/verification/soak.json'));
 const dir = await mkdtemp(join(tmpdir(), 'hh-soak-'));
 const target = { harness: 'test', instance: 'isolated', sessionId: 'owned' },
   token = randomUUID() + randomUUID();
@@ -74,13 +82,15 @@ const samples = [],
     scope:
       'Synthetic owned adapter with real HTTP/SSE/SQLite. No model workload, no working sessions.',
     seconds: duration,
+    startedAt: new Date().toISOString(),
+    runtime: { node: process.version, platform: process.platform, arch: process.arch },
     passed: false,
   };
 try {
   await open();
   const start = Date.now();
   let nextRestart = start + 5000,
-    warm;
+    nextProgress = start + 60000;
   while (Date.now() - start < duration * 1000) {
     const batch = Array.from({ length: 8 }, () => ({
       messageId: randomUUID(),
@@ -122,8 +132,13 @@ try {
         activeResources: process.getActiveResourcesInfo().length,
         fileDescriptors: await fdCount(),
       });
-      warm ??= samples[0];
       nextRestart = Date.now() + 5000;
+    }
+    if (Date.now() >= nextProgress) {
+      console.log(
+        JSON.stringify({ elapsedSeconds: Math.floor((Date.now() - start) / 1000), sent, restarts }),
+      );
+      nextProgress = Date.now() + 60000;
     }
     // Fixed bounded arrival rate keeps the 10-second receipt TTL below capacity.
     await new Promise((r) => setTimeout(r, 250));
@@ -147,14 +162,20 @@ try {
     restarts,
     samples,
     end,
-    thresholds: { heapGrowthMiB: 64, rssGrowthMiB: 128, activeResourceGrowth: 16 },
+    thresholds: {
+      heapGrowthMiB: 64,
+      rssGrowthMiB: 128,
+      activeResourceGrowth: 16,
+      fileDescriptorGrowth: 8,
+    },
   });
 } finally {
   await app?.close();
   await rm(dir, { recursive: true, force: true });
-  await mkdir(resolve('.local/verification'), { recursive: true, mode: 0o700 });
-  await writeFile(resolve('.local/verification/soak.json'), JSON.stringify(report, null, 2), {
+  report.finishedAt = new Date().toISOString();
+  await mkdir(resolve(reportPath, '..'), { recursive: true, mode: 0o700 });
+  await writeFile(reportPath, JSON.stringify(report, null, 2), {
     mode: 0o600,
   });
-  console.log(JSON.stringify(report));
+  console.log(JSON.stringify({ ...report, samples: samples.length, reportPath }));
 }

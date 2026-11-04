@@ -5,6 +5,7 @@ export { CodexAdapter, codexReplyTool } from './adapters/codex.js';
 export {
   ClaudeAdapter,
   CLAUDE_NATIVE_VERSION,
+  CLAUDE_NATIVE_VERSIONS,
   type ClaudeOptions,
   type ClaudeSession,
 } from './adapters/claude.js';

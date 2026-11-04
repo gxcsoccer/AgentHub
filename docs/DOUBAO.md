@@ -4,15 +4,15 @@ The implemented entry points are the local JSON CLI and MCP stdio facade. No Dou
 
 ## First local trial
 
-1. Build AgentHub and start its daemon using `examples/local.json`.
-2. Replace the absolute paths in `examples/mcp.json` and add that server to a separately created Doubao test environment that supports local stdio MCP. Do not publish this template as an official remote-MCP plugin package.
+1. Install `npm install -g @gxcsoccer/agenthub` and start its daemon using `examples/local.json`.
+2. Ensure `agenthub` is on the host PATH and add the server from `examples/mcp.json` to a separately created Doubao test environment that supports local stdio MCP. Do not publish this template as an official remote-MCP plugin package.
 3. Ask the test conversation to call `list_sessions` for Claude, inspect `get_session`, and select a dedicated test session whose capabilities include `peer_message`.
 4. Call `send_message` with a new UUID, explicit address and fixed test text. Poll `get_message_status` with that same UUID. Verify a matching reply appears in the same Doubao conversation.
 5. If the result is `held`, `rejected` or `unknown`, report it. Do not change the recipient's policy, resume it, or silently generate a new message ID and retry.
 
 The standalone official MCP client test verifies the facade, not steps 2–4 inside Doubao. A real Doubao trial is still required.
 
-The user's supplied `doubao-plugin-docs` notes record local stdio MCP as previously working. Official [MCP Server documentation](https://open.doubao.com/document/plugin-docs-center/build/mcp-server-development/plugin-development-spec/mcp-server-development) currently specifies remote HTTPS MCP. Keep these support scopes separate. The official [CLI connector](https://open.doubao.com/document/plugin-docs-center/build/mcp-server-development/plugin-development-spec/cli-connector) runs on the local PC; it can invoke the same JSON CLI. This repository does not claim a published npm package or validated plugin-store bundle.
+The user's supplied `doubao-plugin-docs` notes record local stdio MCP as previously working. Official [MCP Server documentation](https://open.doubao.com/document/plugin-docs-center/build/mcp-server-development/plugin-development-spec/mcp-server-development) currently specifies remote HTTPS MCP. Keep these support scopes separate. The official [CLI connector](https://open.doubao.com/document/plugin-docs-center/build/mcp-server-development/plugin-development-spec/cli-connector) runs on the local PC; it can invoke the same JSON CLI. `@gxcsoccer/agenthub@0.1.0` is published on npm. A validated Doubao plugin-store bundle and Doubao runtime acceptance are still pending.
 
 ## Later adapters
 

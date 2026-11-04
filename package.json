@@ -55,14 +55,17 @@
     "test:codex": "npm --prefix vendor/codex-bridge test",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "check": "npm run format:check && npm run typecheck && npm run test:coverage && npm run test:codex",
+    "check": "npm run format:check && npm run typecheck && npm run test:coverage && npm run test:codex && npm run test:scripts",
     "smoke:isolated": "npm run build && node scripts/smoke-isolated.mjs",
     "prepack": "npm run build",
     "smoke:recovery": "npm run build && node scripts/smoke-recovery.mjs",
     "smoke:doctor": "npm run build && node scripts/smoke-doctor-readonly.mjs",
     "smoke:claude-initiated": "npm run build && node scripts/smoke-claude-initiated.mjs",
     "test:soak": "npm run build && node --expose-gc scripts/soak.mjs --seconds 30",
-    "test:package": "node scripts/verify-package.mjs"
+    "test:package": "node scripts/verify-package.mjs",
+    "smoke:acp": "npm run build && node scripts/smoke-acp-live.mjs",
+    "smoke:compatibility": "npm run build && node scripts/smoke-compatibility.mjs",
+    "test:scripts": "npm run build && node --test --test-timeout=15000 test/live-safety.test.mjs"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "2.4.0",

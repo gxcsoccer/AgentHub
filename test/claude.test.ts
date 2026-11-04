@@ -20,7 +20,7 @@ async function push(path: string, frame: unknown) {
     });
   });
 }
-async function fixture(t: test.TestContext, policy = 'accept') {
+async function fixture(t: test.TestContext, policy = 'accept', version = '2.1.318') {
   const dir = await mkdtemp('/tmp/hht-');
   const id = randomUUID();
   const inbox = join(dir, 'native.sock');
@@ -61,7 +61,7 @@ async function fixture(t: test.TestContext, policy = 'accept') {
   await once(native, 'listening');
   const adapter = new ClaudeAdapter({
     nativeMessaging: true,
-    version: async () => '2.1.318',
+    version: async () => version,
     discover: async () => [{ sessionId: id, pid: process.pid, status: 'idle', socketPath: inbox }],
   });
   const hub = new AgentHub([adapter]);
@@ -102,6 +102,20 @@ test('Claude held and refused receipts preserve policy distinctions', async (t) 
     await new Promise((resolve) => setTimeout(resolve, 25));
     assert.equal(hub.receipt(input.messageId).status, policy === 'hold' ? 'held' : 'rejected');
   }
+});
+test('validated older installed CLI enables opt-in delivery without claiming target process verification', async (t) => {
+  const { hub, adapter, input } = await fixture(t, 'accept', '2.1.317');
+  const info = await adapter.getSession(input.to);
+  assert.deepEqual(info.capabilities.send, ['peer_message']);
+  assert.deepEqual(info.metadata?.validatedCliVersions, ['2.1.317', '2.1.318']);
+  assert.equal(info.metadata?.installedCliVersion, '2.1.317');
+  assert.equal(info.metadata?.processVersionVerified, false);
+  const receipt = await hub.send(input);
+  assert.equal(receipt.native?.installedCliVersion, '2.1.317');
+  assert.equal(receipt.native?.versionSource, 'installed_cli_cached');
+  assert.equal(receipt.native?.processVersionVerified, false);
+  // Deprecated compatibility alias has the same installed-CLI meaning.
+  assert.equal(receipt.native?.cliVersion, '2.1.317');
 });
 test('native sends require opt-in and the validated version', async (t) => {
   const { input } = await fixture(t);

@@ -1,0 +1,33 @@
+name: Extended synthetic soak
+on:
+  workflow_dispatch:
+    inputs:
+      seconds:
+        description: Duration in seconds (5–3600)
+        required: true
+        default: '1800'
+permissions:
+  contents: read
+jobs:
+  soak:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - name: Exercise HTTP, SSE and SQLite with a synthetic owned adapter
+        env:
+          SOAK_SECONDS: ${{ inputs.seconds }}
+        run: node --expose-gc scripts/soak.mjs --seconds "$SOAK_SECONDS" --report .local/verification/soak-manual.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: synthetic-soak
+          path: .local/verification/soak-manual.json
+          include-hidden-files: true
+          retention-days: 14

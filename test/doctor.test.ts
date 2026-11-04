@@ -131,6 +131,19 @@ test('Claude diagnosis identifies opt-out, unvalidated version and missing inbox
   for (const [metadata, expected] of [
     [{ nativeMessagingEnabled: false }, 'native_messaging_disabled'],
     [{ cliVersion: 'unvalidated' }, 'unsupported_version'],
+    [{ installedCliVersion: 'unvalidated' }, 'unsupported_version'],
+    [
+      { cliVersion: 'unvalidated', validatedCliVersions: ['2.1.317', '2.1.318'] },
+      'unsupported_version',
+    ],
+    [
+      {
+        cliVersion: '2.1.317',
+        validatedCliVersions: ['2.1.317', '2.1.318'],
+        socketAvailable: false,
+      },
+      'socket_unavailable',
+    ],
     [{ socketAvailable: false }, 'socket_unavailable'],
   ] as const) {
     const { client } = fixture({
@@ -150,6 +163,7 @@ test('Claude diagnosis identifies opt-out, unvalidated version and missing inbox
   });
   assert.equal(report.checks.find((x) => x.id === 'reply')?.code, 'callback_supported');
   assert.equal(report.checks.find((x) => x.id === 'send')?.details?.processVersionVerified, false);
+  assert.equal(report.checks.find((x) => x.id === 'send')?.details?.installedCliVersion, '2.1.318');
 });
 
 test('doctor reports failed dependencies and unknown scopes without leaking backend error text or silently skipping other instances', async () => {

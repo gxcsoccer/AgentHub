@@ -3,11 +3,10 @@ import { spawn, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
-import { homedir } from 'node:os';
+import { join, resolve, relative, isAbsolute, sep } from 'node:path';
 import { once } from 'node:events';
 import { setTimeout as delay } from 'node:timers/promises';
-import { CodexRpc } from '../dist/vendor/codex-bridge/src/rpc.js';
+import { startCodex, cleanEnv, until } from './live-processes.mjs';
 import {
   AgentHub,
   CodexAdapter,
@@ -21,19 +20,23 @@ if (!process.argv.includes('--run')) {
   process.exit(0);
 }
 const dir = await mkdtemp('/tmp/hh-init-'),
+  backends = [],
   rpcs = [],
   owned = new Map(),
   active = new Map();
 const report = {
   startedAt: new Date().toISOString(),
   scope:
-    'Two logical Codex instances, separate connections and newly created sessions on one App Server; Claude model initiates actual MCP calls. No working-session writes.',
+    'Two independently spawned local App Servers with distinct PIDs, homes, sockets and newly created sessions; Claude model initiates actual MCP calls. No working-session writes. Not remote-host acceptance.',
   checks: [],
   mutations: [],
   claudeMessages: [],
   cleanup: [],
 };
-const reportPath = resolve('.local/verification/claude-initiated.json');
+const reportPath = resolve(
+  process.env.AGENTHUB_TEST_REPORT ?? '.local/verification/independent-backends.json',
+);
+const claudeCommand = process.env.AGENTHUB_TEST_CLAUDE ?? 'claude';
 let hub, app, child, failed;
 const log = (name, evidence = {}) => {
   report.checks.push({ name, passed: true, evidence });
@@ -41,7 +44,7 @@ const log = (name, evidence = {}) => {
 };
 try {
   report.versions = {
-    claude: (await promisify(execFile)('claude', ['--version'])).stdout.trim(),
+    claude: (await promisify(execFile)(claudeCommand, ['--version'])).stdout.trim(),
     codex: (await promisify(execFile)('codex', ['--version'])).stdout.trim(),
     node: process.version,
   };
@@ -51,14 +54,21 @@ try {
   for (const instance of ['alpha', 'beta']) {
     const cwd = join(dir, instance);
     await mkdir(cwd);
-    const rpc = new CodexRpc({
-      socketPath:
-        process.env.CODEX_BRIDGE_SOCKET ??
-        join(
-          process.env.CODEX_HOME ?? join(homedir(), '.codex'),
-          'app-server-control/app-server-control.sock',
-        ),
-    });
+    const backend = await startCodex(
+      join(dir, `${instance}-backend`),
+      instance === 'alpha'
+        ? (process.env.AGENTHUB_TEST_CODEX_ALPHA ?? 'codex')
+        : (process.env.AGENTHUB_TEST_CODEX_BETA ?? 'codex'),
+    );
+    backends.push(backend);
+    const homeFromWorkspace = relative(cwd, backend.home);
+    assert(
+      homeFromWorkspace === '..' ||
+        homeFromWorkspace.startsWith(`..${sep}`) ||
+        isAbsolute(homeFromWorkspace),
+      'Credentials must be outside the model workspace',
+    );
+    const { rpc } = backend;
     rpcs.push(rpc);
     const ids = new Set();
     owned.set(rpc, ids);
@@ -91,12 +101,11 @@ try {
       if (method === 'turn/started') active.set(params.threadId, params.turn.id);
       if (method === 'turn/completed') active.delete(params.threadId);
     });
-    await rpc.connect();
     const adapter = new CodexAdapter({ rpc, instance });
     adapters.push(adapter);
     const { thread } = await rpc.request('thread/start', {
       cwd,
-      approvalPolicy: 'untrusted',
+      approvalPolicy: 'on-request',
       approvalsReviewer: 'user',
       sandbox: 'read-only',
       dynamicTools: [codexReplyTool],
@@ -105,7 +114,7 @@ try {
     });
     await rpc.request('thread/settings/update', {
       threadId: thread.id,
-      approvalPolicy: 'untrusted',
+      approvalPolicy: 'on-request',
       approvalsReviewer: 'user',
       sandboxPolicy: { type: 'readOnly', networkAccess: false },
     });
@@ -117,6 +126,26 @@ try {
       text: `HH_INIT_${instance}_${randomUUID()}`,
     });
   }
+  assert.notEqual(backends[0].child.pid, backends[1].child.pid);
+  assert.notEqual(backends[0].home, backends[1].home);
+  report.backends = backends.map((b, i) => ({
+    instance: targets[i].instance,
+    pid: b.child.pid,
+    version: b.version,
+    home: b.home,
+    socketPath: b.socketPath,
+  }));
+  for (let i = 0; i < 2; i++) {
+    const loaded = await backends[i].rpc.request('thread/loaded/list');
+    assert.deepEqual(loaded.data, [targets[i].sessionId]);
+    await assert.rejects(
+      backends[i].rpc.request('thread/read', {
+        threadId: targets[1 - i].sessionId,
+        includeTurns: false,
+      }),
+    );
+  }
+  log('independent_backend_processes_and_native_storage');
   const caller = {
     id: 'claude-test',
     grants: targets.map((a) => ({
@@ -169,17 +198,10 @@ try {
   };
   const configPath = join(dir, 'mcp.json');
   await writeFile(configPath, JSON.stringify(config), { mode: 0o600 });
-  const env = { ...process.env };
-  for (const key of [
-    'CLAUDECODE',
-    'CLAUDE_CODE_CHILD_SESSION',
-    'CLAUDE_CODE_MESSAGING_SOCKET',
-    'CLAUDE_CODE_MESSAGING_TOKEN',
-  ])
-    delete env[key];
+  const env = cleanEnv();
   const prompt = `Run an isolated MCP communication test. For EACH of these two JSON messages, call mcp__agenthub__send_message exactly once with the supplied fields, then mcp__agenthub__get_message_status with its messageId and waitMs=60000 until status=replied. Verify reply.text equals text. Use no other tools. Finally output BOTH_REPLIES_VERIFIED only if both match. Messages: ${JSON.stringify(messages)}`;
   child = spawn(
-    'claude',
+    claudeCommand,
     [
       '--print',
       '--output-format',
@@ -261,6 +283,12 @@ try {
   const cursor = hub.events.cursor;
   report.cursor = cursor;
   log('restricted_caller_receipts_and_durable_events', { eventsDurable: hub.events.durable });
+  await backends[0].stop();
+  await until(() => !backends[0].rpc.connected, 'alpha disconnect observed', 5000);
+  await assert.rejects(api.getSession(targets[0]));
+  assert.equal((await api.getSession(targets[1])).address.sessionId, targets[1].sessionId);
+  assert((await api.search(targets[1], { search: messages[1].text })).data.length);
+  log('one_backend_exit_does_not_break_other_backend');
 } catch (e) {
   failed = e;
   report.error = String(e.stack ?? e);
@@ -277,6 +305,10 @@ try {
   for (const rpc of rpcs)
     for (const id of owned.get(rpc)) {
       try {
+        if (!rpc.connected) {
+          report.cleanup.push({ sessionId: id, ownedBackendStopped: true });
+          continue;
+        }
         const deadline = Date.now() + 15000;
         while (active.has(id) && Date.now() < deadline) await delay(100);
         if (active.has(id))
@@ -291,6 +323,15 @@ try {
   if (app) await app.close();
   else if (hub) await hub.close();
   for (const rpc of rpcs) rpc.close();
+  for (const backend of backends) {
+    try {
+      await backend.stop();
+      report.cleanup.push({ pid: backend.child.pid, stopped: true });
+    } catch (e) {
+      failed ??= e;
+      report.cleanup.push({ pid: backend.child.pid, error: String(e) });
+    }
+  }
   await rm(dir, { recursive: true, force: true });
   report.finishedAt = new Date().toISOString();
   report.passed = !failed;

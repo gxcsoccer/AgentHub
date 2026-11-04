@@ -10,7 +10,7 @@ One API across coding harnesses. A TypeScript library and local service for comm
 | --------------------------------- | ------------------------------------------------- | ------------------------------------------------------------------- |
 | Discovery                         | Persisted sessions; native search                 | Running sessions via `claude agents --json`; metadata search        |
 | History                           | Native item pagination                            | Local transcript pagination/search, including busy peer attachments |
-| External messages                 | `turn/start.toolOutput`                           | Native inbox, experimental opt-in for CLI 2.1.318                   |
+| External messages                 | `turn/start.toolOutput`                           | Native inbox, experimental opt-in for CLI 2.1.317 / 2.1.318         |
 | Correlated replies                | Owner-registered `agenthub_reply` tool            | Native `SendMessage` to Hub callback socket                         |
 | Approval responses                | Explicit library/HTTP owner response              | Unsupported by this live adapter                                    |
 | Arbitrary live event subscription | Unsupported; requires an existing native listener | Unsupported; own callbacks only                                     |

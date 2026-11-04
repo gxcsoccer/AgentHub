@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import {
   client,
   ndJsonStream,
+  RequestError,
   type ClientConnection,
   type RequestPermissionRequest,
   type RequestPermissionResponse,
@@ -55,6 +56,7 @@ export class AcpAdapter extends EventEmitter implements Adapter {
   private closed = false;
   private stopped = false;
   private creating = 0;
+  private sessionCreationBlocked = false;
   private readonly sessions = new Map<string, Managed>();
   private readonly permissions = new Map<string, Permission>();
   constructor(private readonly options: AcpOptions) {
@@ -135,11 +137,16 @@ export class AcpAdapter extends EventEmitter implements Adapter {
   async createSession(cwd: string): Promise<SessionInfo> {
     text(cwd, 'cwd', 4096);
     if (!isAbsolute(cwd)) throw new HubError('invalid_input', 'Managed cwd must be absolute');
+    this.requireCreationAllowed();
     if (this.sessions.size + this.creating >= 100)
       throw new HubError('session_capacity', 'Managed session limit reached', 429);
     this.creating++;
+    let submitted = false;
     try {
       const connection = await this.connect();
+      // A concurrent creation can fail while this call awaits initialization.
+      this.requireCreationAllowed();
+      submitted = true;
       const result = await connection.agent.request(
         'session/new',
         { cwd, mcpServers: [] },
@@ -161,9 +168,25 @@ export class AcpAdapter extends EventEmitter implements Adapter {
       };
       this.sessions.set(id, s);
       return this.info(s);
+    } catch (error) {
+      // A lost/invalid response can hide a native session. Stop further creation,
+      // but do not interrupt other sessions on this shared owned connection.
+      // These protocol rejections explicitly occur before a session is created.
+      const rejected =
+        error instanceof RequestError && [-32600, -32601, -32602, -32000].includes(error.code);
+      if (submitted && !rejected) this.sessionCreationBlocked = true;
+      throw error;
     } finally {
       this.creating--;
     }
+  }
+  private requireCreationAllowed() {
+    if (this.sessionCreationBlocked)
+      throw new HubError(
+        'acp_creation_blocked',
+        'Session creation is blocked after an uncertain result. After existing work finishes, the owner must restart the Hub daemon to create more sessions; library users must close and rebuild their Hub with a new adapter.',
+        503,
+      );
   }
   private info(s: Managed): SessionInfo {
     return {
@@ -181,6 +204,7 @@ export class AcpAdapter extends EventEmitter implements Adapter {
         historyScope: 'bounded current-process prompt and text response history',
         droppedHistoryEntries: s.dropped,
         liveAttach: false,
+        sessionCreationBlocked: this.sessionCreationBlocked,
       },
     };
   }
@@ -267,10 +291,10 @@ export class AcpAdapter extends EventEmitter implements Adapter {
         422,
       );
     const s = this.session(message.to);
+    const connection = await this.connect();
     if (s.busy)
       throw new HubError('session_busy', 'Managed session already has an active prompt', 409);
     s.busy = true;
-    const connection = await this.connect();
     s.messageId = message.messageId;
     s.reply = '';
     this.record(s, 'user_input', message.text, { messageId: message.messageId });

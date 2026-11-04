@@ -1,3 +1,4 @@
+import { cleanEnv } from './live-processes.mjs';
 import assert from 'node:assert/strict';
 import { spawn, fork, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -153,14 +154,7 @@ try {
     codex: (await exec('codex', ['--version'])).stdout.trim(),
     node: process.version,
   };
-  const env = { ...process.env };
-  for (const k of [
-    'CLAUDECODE',
-    'CLAUDE_CODE_CHILD_SESSION',
-    'CLAUDE_CODE_MESSAGING_SOCKET',
-    'CLAUDE_CODE_MESSAGING_TOKEN',
-  ])
-    delete env[k];
+  const env = cleanEnv();
   claude = spawn(
     'claude',
     [
