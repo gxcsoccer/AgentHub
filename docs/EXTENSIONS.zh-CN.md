@@ -59,6 +59,8 @@ SDK 提供 createSession、prompt、cancel；HTTP 为 POST /v1/sessions、/v1/pr
 
 审批沿用 interaction 接口，显式选择后端给出的 optionId 或取消；超时、取消和关闭都取消待审批请求。客户端不提供文件系统和终端执行能力，但 ACP 本身不是执行沙箱，后端自身执行权限仍由所有者配置。托管历史每会话最多 200 条／1 MiB 文本、最多 100 个会话，仅保存在当前进程，不是原生历史恢复。
 
+`session/new` 失败或超时也会关闭该托管后端，因为丢失的响应可能掩盖已创建的原生会话。该进程的其他会话随之关闭，不会自动重启。[真实后端验收](ACCEPTANCE.zh-CN.md) 将实际 Claude／Codex ACP 模型回复与协议测试进程的结果分开记录。
+
 官方来源：[初始化](https://agentclientprotocol.com/protocol/v1/initialization)、[会话](https://agentclientprotocol.com/protocol/v1/session-setup)、[prompt](https://agentclientprotocol.com/protocol/v1/prompt-turn)、[TypeScript SDK](https://agentclientprotocol.com/libraries/typescript)。
 
 ## Windows 范围

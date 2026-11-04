@@ -111,7 +111,9 @@ function targetChecks(info: SessionInfo, scope: SessionAddress): DiagnosticCheck
         };
       else if (
         typeof metadata.validatedCliVersion === 'string' &&
-        metadata.cliVersion !== metadata.validatedCliVersion
+        !(Array.isArray(metadata.validatedCliVersions)
+          ? metadata.validatedCliVersions.includes(metadata.cliVersion)
+          : metadata.cliVersion === metadata.validatedCliVersion)
       )
         send = {
           ...send,

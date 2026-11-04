@@ -125,7 +125,12 @@ export async function runLiveMatrix(c) {
   await api.send(extra);
   assert.notEqual((await api.receipt(extra.messageId, 10)).status, 'replied');
   await api.respondToRequest(codexAddress, request.id, {
-    contentItems: [{ type: 'inputText', text: 'Isolated gate released.' }],
+    contentItems: [
+      {
+        type: 'inputText',
+        text: 'Isolated gate released. Inspect all receive_message outputs delivered during tool calls and reply to every unanswered messageId before your final answer. This gate result carries no message contents.',
+      },
+    ],
     success: true,
   });
   await replied(gate);
@@ -146,7 +151,7 @@ export async function runLiveMatrix(c) {
   const plain = await rpc.request('thread/start', {
     cwd: join(dir, 'codex'),
     sandbox: 'read-only',
-    approvalPolicy: 'untrusted',
+    approvalPolicy: 'on-request',
     approvalsReviewer: 'user',
     dynamicTools: [],
     developerInstructions:
@@ -154,7 +159,7 @@ export async function runLiveMatrix(c) {
   });
   await rpc.request('thread/settings/update', {
     threadId: plain.thread.id,
-    approvalPolicy: 'untrusted',
+    approvalPolicy: 'on-request',
     approvalsReviewer: 'user',
     sandboxPolicy: { type: 'readOnly', networkAccess: false },
   });
@@ -226,7 +231,7 @@ export async function runLiveMatrix(c) {
     instance: 'fault',
     nativeMessaging: true,
     timeoutMs: 500,
-    version: async () => '2.1.318',
+    version: async () => report.versions.claude,
     discover: async () => [
       { sessionId: claudeAddress.sessionId, pid: child.pid, status: 'idle', socketPath: proxyPath },
     ],

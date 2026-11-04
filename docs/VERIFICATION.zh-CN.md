@@ -9,7 +9,7 @@ npm ci
 npm run check
 ```
 
-当前包含 93 项 AgentHub 测试与原 Codex Session Bridge 的 41 项测试，共 134 项通过，并执行格式、严格 TypeScript 和覆盖率门槛检查。原 Bridge 从自己的目录运行测试，保留其原始路径与契约。
+当前包含 95 项 AgentHub 测试与原 Codex Session Bridge 的 41 项测试，共 136 项，并执行格式、严格 TypeScript 和覆盖率门槛检查。原 Bridge 从自己的目录运行测试，保留其原始路径与契约。
 
 新增测试覆盖：并发幂等、容量/过期、载荷冲突、不确定投递、提前/迟到回复、有限回复转发、关闭竞态、Codex 工具输出与显式审批、Claude 本地 socket 协议和反向回调、策略控制帧、损坏/过期回调、历史大小和游标变化、认证/Origin、非法 HTTP 请求、原有 JSON CLI 命令、真实 stdio 子进程中的七个 MCP 工具、SSE 慢消费者/CRLF/多行数据以及 OpenAPI 一致性。
 
@@ -17,7 +17,7 @@ Node 25.9.0 的 V8 统计显示，新代码编译产物 `dist/src/**/*.js` 的�
 
 新增测试覆盖 SQLite 事务回滚、保留期、损坏/schema/路径拒绝、写盘失败、单实例锁、HTTP/CLI 显式 attach 和保守的工具就绪判断。独立测试子进程在原消息提交、回复转发提交时被实际 SIGKILL，验证锁释放、不重发不确定消息、固定 ID 保留，以及模拟 Claude 迟到回复重新绑定原 socket 后只转发一次。
 
-适配器单元测试使用假对端或 RPC，不代表真实模型已收到消息。完整检查已在本机 Node 22.23.2 和 25.9.0 上通过。CI 配置覆盖 Linux/macOS、Node 22/24，不使用真实凭证或执行模型测试；首个远端 CI 已通过 Linux／macOS Node 22／24 完整检查、Windows Node 22／24 的 11 项可移植测试及 Linux 合成负载检查；改名后的 49ceafb 提交七个 jobs 已全部通过：https://github.com/gxcsoccer/AgentHub/actions/runs/41839976102；本地空 npm 缓存安装也已通过。
+适配器单元测试使用假对端或 RPC，不代表真实模型已收到消息。完整检查已在本机 Node 22.23.2 和 25.9.0 上通过。CI 配置覆盖 Linux/macOS、Node 22/24，不使用真实凭证或执行模型测试；首个远端 CI 已通过 Linux／macOS Node 22／24 完整检查、Windows Node 22／24 的 11 项可移植测试及 Linux 合成负载检查；已发布提交 3b8a216 的七个发布 jobs 已全部通过：https://github.com/gxcsoccer/AgentHub/actions/runs/41842156518；发布后矩阵新增 Linux/macOS Node 26；本地空 npm 缓存安装也已通过。
 
 ## 真实跨 harness 验证
 
@@ -78,7 +78,7 @@ npm run smoke:isolated -- --run --default-inbox --matrix --report .local/verific
 npm run smoke:recovery -- --run --report .local/verification/recovery.json
 ```
 
-脚本会消耗模型额度。Codex 使用 read-only 沙箱、untrusted 审批、关闭执行网络和限定测试工具；Claude 开放 `SendMessage`，仅在矩阵/恢复测试中额外开放本地 gate MCP 工具，不提供 shell 或文件工具。控制器只改变新建测试 Claude 进程的接收策略。原生日志仍保存在各自历史中。报告含私有会话与环境信息，权限为 0600，仅存于忽略的 `.local/verification/`，不可公开发布。
+脚本会消耗模型额度。历史测试使用 untrusted 审批；当前隔离脚本使用 on-request 审批（新建 Codex 配置已拒绝 untrusted）、read-only 沙箱、关闭执行网络和限定测试工具；Claude 开放 `SendMessage`，仅在矩阵/恢复测试中额外开放本地 gate MCP 工具，不提供 shell 或文件工具。控制器只改变新建测试 Claude 进程的接收策略。原生日志仍保存在各自历史中。报告含私有会话与环境信息，权限为 0600，仅存于忽略的 `.local/verification/`，不可公开发布。
 
 ## 只读 doctor 验收
 
@@ -111,3 +111,21 @@ smoke:claude-initiated -- --run 通过五项检查：真实 Claude 模型主动�
 120 秒合成负载通过：3,352 次 HTTP 提交、442 次重复提交核验、23 次 SQLite／服务重开；原生提交次数与唯一请求一致，事件游标跨重启保留。GC 后堆增长约 3.7 MiB、RSS 增长约 69.4 MiB，活动资源始终为 4。这是有界负载验收，不代表长期生产稳定性。更长运行和远端 CI 完成后单独记录。
 
 十分钟合成负载通过：16,432 次唯一提交、2,168 次重复核验、114 次服务／SQLite 重开；原生提交次数没有增加，文件描述符始终为 21，GC 后堆增长约 4.04 MiB，RSS 增长约 89.69 MiB，均在脚本阈值内。私有报告 .local/verification/soak.json。不是十分钟真实模型负载，也不证明更长时间运行无泄漏。
+
+## 发布后验收（2026-11-04）
+
+复现与隔离方式见[真实后端验收](ACCEPTANCE.zh-CN.md)。当前 Node 26.12.1 本地检查通过 95 项 AgentHub 与 41 项原 Bridge 测试，共 136 项；覆盖率为行 96.41%、分支 87.46%、函数 93.96%。tarball 安装验证了五个导出入口、两个 CLI、HTTP、SQLite 和空事件游标恢复。真实模型测试仍需显式执行，不进入无凭证 CI。
+
+| 验收                 | 实际后端版本                                                                  | 结果                                                           |
+| -------------------- | ----------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| 当前版本 ACP         | Claude ACP 0.100.0 + Claude 2.1.318；Codex ACP 2.5.0 + Codex 0.166.0          | 7 项通过，包含实际回复、去重、历史隔离、连续对话及后代进程退出 |
+| 相邻版本 ACP         | 同样的 ACP adapter；Claude 2.1.317、Codex 0.165.0                             | 同样 7 项通过                                                  |
+| 独立 App Server      | Codex 0.166.0 和 0.165.0，各自独立进程／home／socket；Claude 2.1.318 主动调用 | 7 项通过，含原生存储隔离、两次实际 MCP 往返和单后端退出隔离    |
+| 相邻版本原生消息矩阵 | Codex 0.165.0 / Claude 2.1.317                                                | 14 项通过，测试会话归档／卸载                                  |
+| 当前版本原生消息矩阵 | Codex 0.166.0 / Claude 2.1.318                                                | 收紧排队消息测试指令后 14 项通过，测试会话归档／卸载           |
+
+私有报告位于 `.local/verification/`：`acp-live-final.json`、`acp-live-previous.json`、`independent-backends.json`、`compat-codex-0165-claude-2317.json`、`compat-codex-0166-claude-2318-gate.json`。ACP 使用新建托管会话，不恢复工作会话。矩阵只覆盖列出的两组组合，不代表所有版本交叉组合或 provider；独立后端位于同一台机器，不代表远端多机验收。本次未扩展 Windows 和豆包。
+
+当前版本矩阵首次在 Codex 忙碌场景失败：原生历史证明第二条消息在同一轮出现一次，但模型只回复第一条便结束，没有为第二条给出关联回复。失败保留在 `compat-codex-0166-claude-2318.json`。测试指令现明确要求先处理所有已送达消息再结束；gate 提醒不包含消息 ID 或正文，不能代替原生投递。这是测试指令调整，不是传输保证，也没有自动重发原消息。后端接受和历史落盘仍不证明模型已处理或一定回复。
+
+另保留 `acp-live-first.json`、`independent-backends-first.json`：新启动 Codex 的配置文件拒绝 `approval_policy="untrusted"`。当前脚本使用 on-request 审批，继续限制只读执行。新增回归测试还验证：ACP `session/new` 响应丢失时关闭托管后端，后续操作不能自动重启它。

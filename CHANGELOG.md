@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Add opt-in real Claude/Codex ACP acceptance, independent App Server tests and a native-version matrix with isolated cleanup.
+- Validate Claude Code 2.1.317 alongside 2.1.318; preserve explicit opt-in and reject other versions. Report the actual CLI version on native submission.
+- Close the owned ACP backend after a failed or timed-out session creation; reject later work without restarting it.
+- Extend Linux/macOS CI to Node 26 and provide a manually dispatched sustained synthetic soak with a separate report path.
+- Correct published-package documentation and document real-model reply limits and reproducible acceptance commands.
+
 ## 0.1.0
 
 Initial public release of AgentHub, a TypeScript middleware for existing Codex and Claude Code sessions, with explicit native message semantics.

@@ -101,3 +101,26 @@ test('send permission cannot become prompt or session creation permission', asyn
   await assert.rejects(hub.createSession(a, tmpdir(), 'agent'), /authorized/);
   await assert.rejects(hub.cancel(s.address, 'agent'), /authorized/);
 });
+test('lost ACP session/new closes the owned backend and cannot leave an earlier session busy', async (t) => {
+  const a = new AcpAdapter({
+    instance: 'managed',
+    command: process.execPath,
+    args: [fileURLToPath(new URL('./acp-agent.js', import.meta.url))],
+    env: { AGENTHUB_TEST_HANG_NEW: '1' },
+    timeoutMs: 1000,
+  });
+  t.after(() => a.close());
+  const first = await a.createSession(tmpdir());
+  await assert.rejects(a.createSession(tmpdir()));
+  assert.equal((await a.getSession(first.address)).status, 'closed');
+  await assert.rejects(a.createSession(tmpdir()), /closed/);
+  await assert.rejects(
+    a.send({
+      ...message(first.address, 'no replay'),
+      hopCount: 0,
+      expiresAt: new Date(Date.now() + 10000).toISOString(),
+    }),
+    /closed/,
+  );
+  assert.equal((await a.history(first.address)).data.length, 0);
+});

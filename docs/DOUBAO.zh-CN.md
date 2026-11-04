@@ -4,15 +4,15 @@
 
 ## 首次本地验证
 
-1. 编译项目，使用 `examples/local.json` 启动 Hub 守护进程。
-2. 修改 `examples/mcp.json` 的绝对路径，在独立豆包测试环境中配置本地 stdio MCP。该模板不应作为官方远程 MCP 插件包直接发布。
+1. 安装 `npm install -g @gxcsoccer/agenthub`，使用 `examples/local.json` 启动 Hub 守护进程。
+2. 确保宿主 PATH 能找到 `agenthub`，使用 `examples/mcp.json`，在独立豆包测试环境中配置本地 stdio MCP。该模板不应作为官方远程 MCP 插件包直接发布。
 3. 在测试对话中调用 `list_sessions` 查找 Claude，再用 `get_session` 确认测试目标支持 `peer_message`。只选择专用测试会话。
 4. 用新 UUID 调用 `send_message`，发送固定测试内容；用同一 UUID 调用 `get_message_status` 等待回复，确认结果回到同一豆包对话。
 5. `held/rejected/unknown` 必须如实报告，不改变接收策略、不恢复会话、不换新 ID 静默重试。
 
 官方 MCP 客户端测试证明本地入口可用，但不能代替上述豆包运行时验收。当前尚未完成豆包实测。
 
-用户提供的资料记录了本地 stdio MCP 此前可运行；[官方 MCP 文档](https://open.doubao.com/document/plugin-docs-center/build/mcp-server-development/plugin-development-spec/mcp-server-development) 目前规定远程 HTTPS MCP。两者范围不同。[CLI 连接器](https://open.doubao.com/document/plugin-docs-center/build/mcp-server-development/plugin-development-spec/cli-connector) 官方明确在 PC 本地执行，可以调用本项目 CLI。项目尚未声明已发布 npm 包或通过商店校验的插件包。
+用户提供的资料记录了本地 stdio MCP 此前可运行；[官方 MCP 文档](https://open.doubao.com/document/plugin-docs-center/build/mcp-server-development/plugin-development-spec/mcp-server-development) 目前规定远程 HTTPS MCP。两者范围不同。[CLI 连接器](https://open.doubao.com/document/plugin-docs-center/build/mcp-server-development/plugin-development-spec/cli-connector) 官方明确在 PC 本地执行，可以调用本项目 CLI。`@gxcsoccer/agenthub@0.1.0` 已发布到 npm；豆包运行时验收和通过商店校验的插件包仍待完成。
 
 ## 后续适配方向
 

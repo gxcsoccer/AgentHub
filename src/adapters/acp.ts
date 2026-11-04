@@ -161,6 +161,11 @@ export class AcpAdapter extends EventEmitter implements Adapter {
       };
       this.sessions.set(id, s);
       return this.info(s);
+    } catch (error) {
+      // A lost session/new response can hide a newly created native session.
+      // Stop the owned backend instead of allowing further work on that connection.
+      await this.close();
+      throw error;
     } finally {
       this.creating--;
     }
@@ -267,10 +272,10 @@ export class AcpAdapter extends EventEmitter implements Adapter {
         422,
       );
     const s = this.session(message.to);
+    const connection = await this.connect();
     if (s.busy)
       throw new HubError('session_busy', 'Managed session already has an active prompt', 409);
     s.busy = true;
-    const connection = await this.connect();
     s.messageId = message.messageId;
     s.reply = '';
     this.record(s, 'user_input', message.text, { messageId: message.messageId });

@@ -72,6 +72,8 @@ Endpoints: `POST /v1/sessions`, `POST /v1/prompts`, `POST /v1/session/cancel`. C
 
 Permissions use the existing interaction endpoints: an explicitly authorized caller selects an advertised option ID or cancels. Timeout, cancellation and closure cancel pending requests. AgentHub advertises no client filesystem or terminal execution capabilities. The agent's own execution sandbox and credentials remain its owner's responsibility; ACP is not an execution sandbox. Managed history holds at most 200 entries / 1 MiB text per session in this process, at most 100 sessions. It is not native transcript recovery.
 
+If `session/new` fails or times out, AgentHub closes that owned backend too: a lost response may conceal a native session. Existing sessions on that process become closed, and it is not restarted automatically. [Real-backend acceptance](ACCEPTANCE.md) covers actual Claude and Codex ACP model replies separately from the fixture tests.
+
 Primary references: [ACP initialization](https://agentclientprotocol.com/protocol/v1/initialization), [session setup](https://agentclientprotocol.com/protocol/v1/session-setup), [prompt turns](https://agentclientprotocol.com/protocol/v1/prompt-turn), [official TypeScript SDK](https://agentclientprotocol.com/libraries/typescript).
 
 ## Windows scope

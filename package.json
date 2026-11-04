@@ -62,7 +62,9 @@
     "smoke:doctor": "npm run build && node scripts/smoke-doctor-readonly.mjs",
     "smoke:claude-initiated": "npm run build && node scripts/smoke-claude-initiated.mjs",
     "test:soak": "npm run build && node --expose-gc scripts/soak.mjs --seconds 30",
-    "test:package": "node scripts/verify-package.mjs"
+    "test:package": "node scripts/verify-package.mjs",
+    "smoke:acp": "npm run build && node scripts/smoke-acp-live.mjs",
+    "smoke:compatibility": "npm run build && node scripts/smoke-compatibility.mjs"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "2.4.0",
