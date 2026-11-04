@@ -144,7 +144,10 @@ export class ClaudeAdapter extends EventEmitter implements Adapter {
       },
       metadata: {
         pid: session.pid,
+        installedCliVersion: version,
+        // Compatibility alias; neither field authenticates the target process.
         cliVersion: version,
+        versionSource: 'installed_cli_cached',
         validatedCliVersion: CLAUDE_NATIVE_VERSION,
         validatedCliVersions: [...CLAUDE_NATIVE_VERSIONS],
         processVersionVerified: false,
@@ -404,7 +407,13 @@ export class ClaudeAdapter extends EventEmitter implements Adapter {
     });
     return {
       status: 'transport_written',
-      native: { protocolVersion: 1, cliVersion: version },
+      native: {
+        protocolVersion: 1,
+        installedCliVersion: version,
+        cliVersion: version,
+        versionSource: 'installed_cli_cached',
+        processVersionVerified: false,
+      },
     };
   }
   private receive(frame: Json): void {

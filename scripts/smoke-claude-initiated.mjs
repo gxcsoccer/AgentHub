@@ -3,10 +3,10 @@ import { spawn, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { join, resolve, relative, isAbsolute, sep } from 'node:path';
 import { once } from 'node:events';
 import { setTimeout as delay } from 'node:timers/promises';
-import { startCodex } from './live-processes.mjs';
+import { startCodex, cleanEnv, until } from './live-processes.mjs';
 import {
   AgentHub,
   CodexAdapter,
@@ -33,7 +33,10 @@ const report = {
   claudeMessages: [],
   cleanup: [],
 };
-const reportPath = resolve('.local/verification/independent-backends.json');
+const reportPath = resolve(
+  process.env.AGENTHUB_TEST_REPORT ?? '.local/verification/independent-backends.json',
+);
+const claudeCommand = process.env.AGENTHUB_TEST_CLAUDE ?? 'claude';
 let hub, app, child, failed;
 const log = (name, evidence = {}) => {
   report.checks.push({ name, passed: true, evidence });
@@ -41,7 +44,7 @@ const log = (name, evidence = {}) => {
 };
 try {
   report.versions = {
-    claude: (await promisify(execFile)('claude', ['--version'])).stdout.trim(),
+    claude: (await promisify(execFile)(claudeCommand, ['--version'])).stdout.trim(),
     codex: (await promisify(execFile)('codex', ['--version'])).stdout.trim(),
     node: process.version,
   };
@@ -52,12 +55,19 @@ try {
     const cwd = join(dir, instance);
     await mkdir(cwd);
     const backend = await startCodex(
-      cwd,
+      join(dir, `${instance}-backend`),
       instance === 'alpha'
         ? (process.env.AGENTHUB_TEST_CODEX_ALPHA ?? 'codex')
         : (process.env.AGENTHUB_TEST_CODEX_BETA ?? 'codex'),
     );
     backends.push(backend);
+    const homeFromWorkspace = relative(cwd, backend.home);
+    assert(
+      homeFromWorkspace === '..' ||
+        homeFromWorkspace.startsWith(`..${sep}`) ||
+        isAbsolute(homeFromWorkspace),
+      'Credentials must be outside the model workspace',
+    );
     const { rpc } = backend;
     rpcs.push(rpc);
     const ids = new Set();
@@ -188,17 +198,10 @@ try {
   };
   const configPath = join(dir, 'mcp.json');
   await writeFile(configPath, JSON.stringify(config), { mode: 0o600 });
-  const env = { ...process.env };
-  for (const key of [
-    'CLAUDECODE',
-    'CLAUDE_CODE_CHILD_SESSION',
-    'CLAUDE_CODE_MESSAGING_SOCKET',
-    'CLAUDE_CODE_MESSAGING_TOKEN',
-  ])
-    delete env[key];
+  const env = cleanEnv();
   const prompt = `Run an isolated MCP communication test. For EACH of these two JSON messages, call mcp__agenthub__send_message exactly once with the supplied fields, then mcp__agenthub__get_message_status with its messageId and waitMs=60000 until status=replied. Verify reply.text equals text. Use no other tools. Finally output BOTH_REPLIES_VERIFIED only if both match. Messages: ${JSON.stringify(messages)}`;
   child = spawn(
-    'claude',
+    claudeCommand,
     [
       '--print',
       '--output-format',
@@ -281,7 +284,7 @@ try {
   report.cursor = cursor;
   log('restricted_caller_receipts_and_durable_events', { eventsDurable: hub.events.durable });
   await backends[0].stop();
-  await delay(100);
+  await until(() => !backends[0].rpc.connected, 'alpha disconnect observed', 5000);
   await assert.rejects(api.getSession(targets[0]));
   assert.equal((await api.getSession(targets[1])).address.sessionId, targets[1].sessionId);
   assert((await api.search(targets[1], { search: messages[1].text })).data.length);

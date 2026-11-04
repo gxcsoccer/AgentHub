@@ -75,7 +75,9 @@ function targetChecks(info: SessionInfo, scope: SessionAddress): DiagnosticCheck
     invalidResponse();
   const metadata = info.metadata ?? {},
     details: Json = { delivery: info.capabilities.send };
-  for (const key of ['cliVersion', 'validatedCliVersion', 'processVersionVerified'])
+  const installedCliVersion = metadata.installedCliVersion ?? metadata.cliVersion;
+  if (typeof installedCliVersion === 'string') details.installedCliVersion = installedCliVersion;
+  for (const key of ['validatedCliVersion', 'processVersionVerified', 'versionSource'])
     if (typeof metadata[key] === 'string' || typeof metadata[key] === 'boolean')
       details[key] = metadata[key];
   let send: DiagnosticCheck = {
@@ -112,8 +114,8 @@ function targetChecks(info: SessionInfo, scope: SessionAddress): DiagnosticCheck
       else if (
         typeof metadata.validatedCliVersion === 'string' &&
         !(Array.isArray(metadata.validatedCliVersions)
-          ? metadata.validatedCliVersions.includes(metadata.cliVersion)
-          : metadata.cliVersion === metadata.validatedCliVersion)
+          ? metadata.validatedCliVersions.includes(installedCliVersion)
+          : installedCliVersion === metadata.validatedCliVersion)
       )
         send = {
           ...send,

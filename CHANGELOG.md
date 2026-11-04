@@ -3,8 +3,9 @@
 ## Unreleased
 
 - Add opt-in real Claude/Codex ACP acceptance, independent App Server tests and a native-version matrix with isolated cleanup.
-- Validate Claude Code 2.1.317 alongside 2.1.318; preserve explicit opt-in and reject other versions. Report the actual CLI version on native submission.
-- Close the owned ACP backend after a failed or timed-out session creation; reject later work without restarting it.
+- Validate Claude Code 2.1.317 alongside 2.1.318; preserve explicit opt-in and reject other versions. Report the cached installed CLI version explicitly; do not claim it verifies the target process.
+- Preserve existing ACP sessions and pending permissions when another creation fails. Block further creation after an uncertain result, without restarting the backend.
+- Add regression tests for isolated launcher arguments, session environment clearing and owned-process cleanup; keep test credentials outside model workspaces.
 - Extend Linux/macOS CI to Node 26 and provide a manually dispatched sustained synthetic soak with a separate report path.
 - Correct published-package documentation and document real-model reply limits and reproducible acceptance commands.
 

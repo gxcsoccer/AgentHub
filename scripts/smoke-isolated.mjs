@@ -1,3 +1,4 @@
+import { cleanEnv } from './live-processes.mjs';
 import assert from 'node:assert/strict';
 import { spawn, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -130,14 +131,7 @@ try {
   const codexVersion = (await exec(codexCommand, ['--version'], { timeout: 15000 })).stdout.trim();
   assert(CLAUDE_NATIVE_VERSIONS.includes(claudeVersion));
   report.versions = { claude: claudeVersion, codex: codexVersion };
-  const env = { ...process.env };
-  for (const key of [
-    'CLAUDECODE',
-    'CLAUDE_CODE_CHILD_SESSION',
-    'CLAUDE_CODE_MESSAGING_SOCKET',
-    'CLAUDE_CODE_MESSAGING_TOKEN',
-  ])
-    delete env[key];
+  const env = cleanEnv();
   child = spawn(
     claudeCommand,
     [

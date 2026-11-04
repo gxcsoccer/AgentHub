@@ -9,16 +9,17 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { CodexRpc } from '../dist/vendor/codex-bridge/src/rpc.js';
 
 export const exec = promisify(execFile);
-export const cleanEnv = () => {
-  const env = { ...process.env };
-  for (const key of [
-    'CLAUDECODE',
-    'CLAUDE_CODE_CHILD_SESSION',
-    'CLAUDE_CODE_MESSAGING_SOCKET',
-    'CLAUDE_CODE_MESSAGING_TOKEN',
-    'CODEX_THREAD_ID',
-  ])
-    delete env[key];
+export const SESSION_ENV_KEYS = Object.freeze([
+  'CLAUDECODE',
+  'CLAUDE_CODE_CHILD_SESSION',
+  'CLAUDE_CODE_MESSAGING_SOCKET',
+  'CLAUDE_CODE_MESSAGING_TOKEN',
+  'CODEX_THREAD_ID',
+]);
+export const cleanEnv = (source = process.env) => {
+  const env = { ...source };
+  // Empty overrides remain cleared even when a launcher merges process.env.
+  for (const key of SESSION_ENV_KEYS) env[key] = '';
   return env;
 };
 export async function until(check, label, timeoutMs = 30000) {
@@ -30,8 +31,9 @@ export async function until(check, label, timeoutMs = 30000) {
   } while (Date.now() < deadline);
   throw new Error(`Timed out: ${label}`);
 }
-export async function stopOwned(child) {
-  if (!child?.pid) return;
+export async function stopOwned(child, graceMs = 3000) {
+  const running = () => child?.pid && child.exitCode === null && child.signalCode === null;
+  if (!running()) return;
   // Only children started with detached:true by this helper own these groups.
   const signal = (value) => {
     try {
@@ -41,10 +43,11 @@ export async function stopOwned(child) {
     }
   };
   signal('SIGTERM');
-  const deadline = Date.now() + 3000;
-  while (child.exitCode === null && child.signalCode === null && Date.now() < deadline)
-    await delay(50);
-  signal('SIGKILL');
+  const deadline = Date.now() + graceMs;
+  while (running() && Date.now() < deadline) await delay(50);
+  // Once the tracked leader exits, its numeric PGID is no longer our authority.
+  // Signal only while the ChildProcess still owns a live group leader.
+  if (running()) signal('SIGKILL');
   await until(() => child.exitCode !== null || child.signalCode !== null, 'owned child exit', 3000);
 }
 export async function isolatedCodexHome(root) {

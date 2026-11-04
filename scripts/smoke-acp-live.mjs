@@ -25,7 +25,6 @@ const report = {
   cleanup: [],
   passed: false,
 };
-const pids = join(dir, 'claude-pids');
 let app, hub, failure;
 async function descendants() {
   const rows = (await exec('ps', ['-ax', '-o', 'pid=,ppid='])).stdout
@@ -71,14 +70,6 @@ try {
     codexAcp: await packageInfo('codex-acp', '2.5.0'),
   };
   const env = cleanEnv();
-  // AcpAdapter inherits process.env; explicitly clear nested-session routing.
-  for (const key of [
-    'CLAUDECODE',
-    'CLAUDE_CODE_CHILD_SESSION',
-    'CLAUDE_CODE_MESSAGING_SOCKET',
-    'CLAUDE_CODE_MESSAGING_TOKEN',
-  ])
-    env[key] = '';
   const wrapper = resolve('scripts/live-claude-executable.mjs');
   await chmod(wrapper, 0o755);
   const adapters = [
@@ -90,7 +81,6 @@ try {
         ...env,
         CLAUDE_CODE_EXECUTABLE: wrapper,
         AGENTHUB_TEST_CLAUDE: cli,
-        AGENTHUB_TEST_PIDS: pids,
       },
       timeoutMs: 120000,
     }),
@@ -166,16 +156,9 @@ try {
 } catch (e) {
   failure = e;
 } finally {
-  ownedPids = [
-    ...new Set([
-      ...(await descendants()),
-      ...(await readFile(pids, 'utf8').catch(() => ''))
-        .trim()
-        .split('\n')
-        .filter(Boolean)
-        .map(Number),
-    ]),
-  ];
+  // Snapshot only live descendants before closing. This is observation evidence,
+  // never authority to signal a PID after its parent/identity may have changed.
+  ownedPids = await descendants();
   if (app) await app.close();
   else await hub?.close();
   for (const pid of ownedPids) {
@@ -184,13 +167,7 @@ try {
       report.cleanup.push({ pid, stopped: true });
     } catch (e) {
       failure ??= e;
-      // These exact PIDs were observed as descendants of this test before close.
-      try {
-        process.kill(pid, 'SIGKILL');
-      } catch (error) {
-        if (error.code !== 'ESRCH') throw error;
-      }
-      report.cleanup.push({ pid, requiredForcedCleanup: true });
+      report.cleanup.push({ pid, exitUnconfirmed: true });
     }
   }
   if (!failure) check('managed_children_exit_after_close');
@@ -199,7 +176,10 @@ try {
   if (failure) report.error = String(failure.stack ?? failure);
   await mkdir(resolve(reportPath, '..'), { recursive: true, mode: 0o700 });
   await writeFile(reportPath, JSON.stringify(report, null, 2), { mode: 0o600 });
-  await rm(dir, { recursive: true, force: true });
+  if (report.cleanup.some((entry) => entry.exitUnconfirmed)) {
+    report.retainedDirectory = dir;
+    await writeFile(reportPath, JSON.stringify(report, null, 2), { mode: 0o600 });
+  } else await rm(dir, { recursive: true, force: true });
 }
 if (failure) {
   console.error(failure);

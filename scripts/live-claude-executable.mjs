@@ -3,22 +3,40 @@
 // excluding user hooks, configured MCP servers and all model tools.
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { appendFileSync } from 'node:fs';
 const command = process.env.AGENTHUB_TEST_CLAUDE;
 assert(command, 'AGENTHUB_TEST_CLAUDE must name the real Claude executable');
 let args = process.argv.slice(2);
-if (args.includes('--output-format')) {
-  const pairs = new Set([
+const flagName = (arg) => arg.split('=', 1)[0];
+if (args.some((arg) => flagName(arg) === '--output-format')) {
+  const variadic = new Set([
     '--tools',
     '--allowedTools',
+    '--allowed-tools',
     '--disallowedTools',
-    '--settings',
-    '--setting-sources',
-    '--permission-mode',
+    '--disallowed-tools',
     '--mcp-config',
   ]);
-  const flags = new Set(['--strict-mcp-config', '--disable-slash-commands', '--no-chrome']);
-  args = args.filter((arg, i, all) => !pairs.has(arg) && !pairs.has(all[i - 1]) && !flags.has(arg));
+  const single = new Set(['--settings', '--setting-sources', '--permission-mode']);
+  const flags = new Set([
+    '--strict-mcp-config',
+    '--disable-slash-commands',
+    '--no-chrome',
+    '--chrome',
+    '--dangerously-skip-permissions',
+    '--allow-dangerously-skip-permissions',
+  ]);
+  const filtered = [];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i],
+      name = flagName(arg);
+    assert.notEqual(arg, '--', 'Positional separator is unsupported in the isolated launcher');
+    if (variadic.has(name)) {
+      while (i + 1 < args.length && !args[i + 1].startsWith('-')) i++;
+    } else if (single.has(name)) {
+      if (!arg.includes('=') && i + 1 < args.length && !args[i + 1].startsWith('-')) i++;
+    } else if (!flags.has(name)) filtered.push(arg);
+  }
+  args = filtered;
   args.push(
     '--tools',
     '',
@@ -38,8 +56,6 @@ if (args.includes('--output-format')) {
   );
 }
 const child = spawn(command, args, { stdio: 'inherit' });
-if (process.env.AGENTHUB_TEST_PIDS)
-  appendFileSync(process.env.AGENTHUB_TEST_PIDS, `${child.pid}\n`, { mode: 0o600 });
 child.on('error', (e) => {
   console.error(e.message);
   process.exitCode = 1;
@@ -47,4 +63,7 @@ child.on('error', (e) => {
 child.on('exit', (code) => {
   process.exitCode = code ?? 1;
 });
-for (const signal of ['SIGTERM', 'SIGINT']) process.on(signal, () => child.kill(signal));
+for (const signal of ['SIGTERM', 'SIGINT'])
+  process.on(signal, () => {
+    if (child.exitCode === null && child.signalCode === null) child.kill(signal);
+  });

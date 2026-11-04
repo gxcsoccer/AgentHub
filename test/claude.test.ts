@@ -103,12 +103,18 @@ test('Claude held and refused receipts preserve policy distinctions', async (t) 
     assert.equal(hub.receipt(input.messageId).status, policy === 'hold' ? 'held' : 'rejected');
   }
 });
-test('validated older Claude version advertises peer delivery and reports the actual sender CLI version', async (t) => {
+test('validated older installed CLI enables opt-in delivery without claiming target process verification', async (t) => {
   const { hub, adapter, input } = await fixture(t, 'accept', '2.1.317');
   const info = await adapter.getSession(input.to);
   assert.deepEqual(info.capabilities.send, ['peer_message']);
   assert.deepEqual(info.metadata?.validatedCliVersions, ['2.1.317', '2.1.318']);
+  assert.equal(info.metadata?.installedCliVersion, '2.1.317');
+  assert.equal(info.metadata?.processVersionVerified, false);
   const receipt = await hub.send(input);
+  assert.equal(receipt.native?.installedCliVersion, '2.1.317');
+  assert.equal(receipt.native?.versionSource, 'installed_cli_cached');
+  assert.equal(receipt.native?.processVersionVerified, false);
+  // Deprecated compatibility alias has the same installed-CLI meaning.
   assert.equal(receipt.native?.cliVersion, '2.1.317');
 });
 test('native sends require opt-in and the validated version', async (t) => {

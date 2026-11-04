@@ -9,7 +9,7 @@ npm ci
 npm run check
 ```
 
-当前包含 95 项 AgentHub 测试与原 Codex Session Bridge 的 41 项测试，共 136 项，并执行格式、严格 TypeScript 和覆盖率门槛检查。原 Bridge 从自己的目录运行测试，保留其原始路径与契约。
+当前在 Linux/macOS 包含 97 项 AgentHub、原 Codex Session Bridge 的 41 项及七项真实验收脚本防护测试，共 145 项，并执行格式、严格 TypeScript 和覆盖率门槛检查。原 Bridge 从自己的目录运行测试，保留其原始路径与契约。
 
 新增测试覆盖：并发幂等、容量/过期、载荷冲突、不确定投递、提前/迟到回复、有限回复转发、关闭竞态、Codex 工具输出与显式审批、Claude 本地 socket 协议和反向回调、策略控制帧、损坏/过期回调、历史大小和游标变化、认证/Origin、非法 HTTP 请求、原有 JSON CLI 命令、真实 stdio 子进程中的七个 MCP 工具、SSE 慢消费者/CRLF/多行数据以及 OpenAPI 一致性。
 
@@ -114,7 +114,7 @@ smoke:claude-initiated -- --run 通过五项检查：真实 Claude 模型主动�
 
 ## 发布后验收（2026-11-04）
 
-复现与隔离方式见[真实后端验收](ACCEPTANCE.zh-CN.md)。当前 Node 26.12.1 本地检查通过 95 项 AgentHub 与 41 项原 Bridge 测试，共 136 项；覆盖率为行 96.41%、分支 87.46%、函数 93.96%。tarball 安装验证了五个导出入口、两个 CLI、HTTP、SQLite 和空事件游标恢复。真实模型测试仍需显式执行，不进入无凭证 CI。
+复现与隔离方式见[真实后端验收](ACCEPTANCE.zh-CN.md)。该阶段 Node 26.12.1 本地检查通过 95 项 AgentHub 与 41 项原 Bridge 测试，共 136 项；覆盖率为行 96.41%、分支 87.46%、函数 93.96%。tarball 安装验证了五个导出入口、两个 CLI、HTTP、SQLite 和空事件游标恢复。真实模型测试仍需显式执行，不进入无凭证 CI。
 
 | 验收                 | 实际后端版本                                                                  | 结果                                                           |
 | -------------------- | ----------------------------------------------------------------------------- | -------------------------------------------------------------- |
@@ -128,8 +128,16 @@ smoke:claude-initiated -- --run 通过五项检查：真实 Claude 模型主动�
 
 当前版本矩阵首次在 Codex 忙碌场景失败：原生历史证明第二条消息在同一轮出现一次，但模型只回复第一条便结束，没有为第二条给出关联回复。失败保留在 `compat-codex-0166-claude-2318.json`。测试指令现明确要求先处理所有已送达消息再结束；gate 提醒不包含消息 ID 或正文，不能代替原生投递。这是测试指令调整，不是传输保证，也没有自动重发原消息。后端接受和历史落盘仍不证明模型已处理或一定回复。
 
-另保留 `acp-live-first.json`、`independent-backends-first.json`：新启动 Codex 的配置文件拒绝 `approval_policy="untrusted"`。当前脚本使用 on-request 审批，继续限制只读执行。新增回归测试还验证：ACP `session/new` 响应丢失时关闭托管后端，后续操作不能自动重启它。
+另保留 `acp-live-first.json`、`independent-backends-first.json`：新启动 Codex 的配置文件拒绝 `approval_policy="untrusted"`。当前脚本使用 on-request 审批，继续限制只读执行。原先创建失败即关闭后端的行为已在 PR review 中修正，见下文。
 
 30 分钟合成负载通过：macOS arm64 / Node v26.12.1，49,856 次唯一 HTTP 提交、6,579 次重复核验、347 次服务／SQLite 重开。原生调用数与唯一请求数一致，持久事件游标在重开后保留。相对首次采样，GC 后堆变化 4.01 MiB、RSS 变化 48.55 MiB；采样文件描述符 21–21，活动资源 4–4，全部在脚本阈值内。私有报告：`.local/verification/soak-1800.json`。这是合成适配器结果，不是模型吞吐量或生产可靠性保证。
 
 代码提交 304ec1a 的九个 [CI 任务](https://github.com/gxcsoccer/AgentHub/actions/runs/41847300219) 全部通过，覆盖 Linux/macOS Node 22／24／26、Windows Node 22／24 可移植子集及合成负载。已下载并核验上传的合成报告：Linux x64 / Node 24.22.2，30 秒、816 次唯一提交、五次重开。独立的手动负载工作流合并到默认分支后才能触发；未将本次未合并 PR 描述成已完成该手动触发验收。
+
+## PR review 修复（2026-11-05）
+
+回归测试在修复前复现了两类缺陷：ACP 创建失败会关闭正在等待审批的另一会话；启动包装器的等号／多值参数可绕过测试限制。修复后测试通过。创建结果不确定时只阻止后续创建，已有会话可以继续审批、回复及后续 prompt，无须重启后端；明确的参数拒绝允许再次创建。
+
+Node 26.12.1 上 `npm run check` 通过 97 项 AgentHub、41 项原 Bridge、七项启动／清理测试，共 145 项。源码覆盖率为行 96.43%、分支 87.40%、函数 93.98%。`npm run test:package` 再次验证五个导出入口、两个 CLI、HTTP、SQLite 和空事件游标恢复。
+
+受影响的真实 ACP 验收使用 Claude 2.1.318 / Codex 0.166.0 和相同固定版 ACP adapter，七项通过；独立后端使用 Codex 0.166.0 / 0.165.0、Claude 2.1.318，七项通过。两组均确认测试进程退出。私有报告为 `.local/verification/` 下的 `review-acp-live.json`、`review-independent-backends.json`。独立后端凭证 home 已移到模型工作目录之外，故障隔离断言等待 RPC 实际断开。本次修复未重跑未改动的 30 分钟负载和相邻版本原生矩阵。

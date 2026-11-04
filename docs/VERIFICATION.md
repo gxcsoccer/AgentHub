@@ -9,7 +9,7 @@ npm ci
 npm run check
 ```
 
-The suite contains 95 AgentHub tests and the 41 original Codex Session Bridge tests: 136 tests. The root check also runs formatting, strict TypeScript checks and coverage thresholds. The imported bridge is tested from its own directory, preserving its original fixtures and contract.
+The suite contains 97 AgentHub tests, the 41 original Codex Session Bridge tests and seven live-runner safety tests: 145 tests on Linux/macOS. The root check also runs formatting, strict TypeScript checks and coverage thresholds. The imported bridge is tested from its own directory, preserving its original fixtures and contract.
 
 AgentHub coverage includes concurrent idempotency, capacity/expiry, payload conflicts, uncertain delivery, early/late replies, bounded reply forwarding, shutdown races, Codex tool-output delivery and explicit approval responses, Claude NDJSON framing and reverse callbacks over local test sockets, policy controls, malformed/expired callbacks, bounded history and cursor changes, authentication/origins, malformed HTTP requests, the original JSON CLI commands, all seven current MCP tools through a real stdio child, SSE slow consumers/CRLF/multiline frames, and OpenAPI consistency.
 
@@ -114,7 +114,7 @@ The ten-minute synthetic run passed 16,432 unique submissions, 2,168 duplicate c
 
 ## Post-release acceptance (2026-11-04)
 
-Reproduction and isolation details are in [real-backend acceptance](ACCEPTANCE.md). The current local check on Node 26.12.1 passed 95 AgentHub tests plus 41 retained bridge tests (136 total), with 96.41% lines, 87.46% branches and 93.96% functions. Tarball installation validated all five exports, both CLI binaries, HTTP, SQLite and empty-event cursor recovery. Live tests remain opt-in and are not part of credential-free CI.
+Reproduction and isolation details are in [real-backend acceptance](ACCEPTANCE.md). The local check at that stage on Node 26.12.1 passed 95 AgentHub tests plus 41 retained bridge tests (136 total), with 96.41% lines, 87.46% branches and 93.96% functions. Tarball installation validated all five exports, both CLI binaries, HTTP, SQLite and empty-event cursor recovery. Live tests remain opt-in and are not part of credential-free CI.
 
 | Run                             | Actual backend versions                                                                 | Result                                                                                                          |
 | ------------------------------- | --------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
@@ -128,8 +128,16 @@ Private reports: `acp-live-final.json`, `acp-live-previous.json`, `independent-b
 
 The initial current-version matrix failed at a busy Codex reply: native history showed the second envelope once in the same turn, but the model answered the first envelope and finished without a correlated reply to the second. `compat-codex-0166-claude-2318.json` preserves that failure. The test now asks the model to finish all delivered envelopes before its final answer; the gate reminder contains no message ID or payload, so it cannot substitute for native delivery. This was a test-instruction change, not a transport guarantee or automatic message retry. Native acceptance and history evidence still do not prove model processing or a reply.
 
-Earlier ACP/independent-server startup failures are preserved as `acp-live-first.json` and `independent-backends-first.json`: fresh Codex configurations reject `approval_policy="untrusted"`. The new runners use on-request approvals and retain read-only execution. Regression tests additionally prove that a lost ACP `session/new` response closes the owned backend and later work does not restart it.
+Earlier ACP/independent-server startup failures are preserved as `acp-live-first.json` and `independent-backends-first.json`: fresh Codex configurations reject `approval_policy="untrusted"`. The new runners use on-request approvals and retain read-only execution. The original close-on-creation-failure behavior was replaced during PR review, as recorded below.
 
 The 30-minute synthetic run passed 49,856 unique HTTP submissions, 6,579 duplicate checks and 347 server/SQLite reopen cycles on macOS arm64 / Node v26.12.1. Native calls matched unique requests and durable event cursors survived reopen. Post-GC heap changed by 4.01 MiB and RSS by 48.55 MiB from the first sample; sampled file descriptors were 21–21, active resources 4–4. All scripted thresholds passed. Private report: `.local/verification/soak-1800.json`. These are synthetic-adapter results, not model throughput or a production reliability guarantee.
 
 The expanded code commit 304ec1a passed all nine [CI jobs](https://github.com/gxcsoccer/AgentHub/actions/runs/41847300219), including Linux/macOS Node 22/24/26, Windows Node 22/24 portable checks and synthetic soak. The uploaded synthetic report was downloaded and checked: Linux x64 / Node 24.22.2, 30 seconds, 816 unique submissions and five reopens. The separate manual soak workflow becomes dispatchable after merge into the default branch; it has not been dispatched from this unmerged PR.
+
+## PR review fixes (2026-11-05)
+
+The regressions reproduced two defects before the fixes: failed ACP creation closed an unrelated session with a pending permission, and equals/variadic launcher options escaped the test restrictions. The updated tests pass. Uncertain creation now blocks only further creation; known sessions can complete permissions, replies and subsequent prompts without restarting the backend. An explicit parameter rejection permits a later creation.
+
+`npm run check` on Node 26.12.1 passed 97 AgentHub, 41 retained bridge and seven launcher/cleanup tests (145 total). Source coverage was 96.43% lines, 87.40% branches and 93.98% functions. `npm run test:package` again verified five exports, both CLIs, HTTP, SQLite and empty-event cursor recovery.
+
+The affected real ACP run passed all seven checks with Claude 2.1.318 / Codex 0.166.0 and the same pinned ACP adapters. Independent backends passed all seven checks with Codex 0.166.0 / 0.165.0 and Claude 2.1.318. Both runs confirmed owned-process cleanup. Reports are private: `review-acp-live.json` and `review-independent-backends.json` under `.local/verification/`. The independent run uses backend credential homes outside model workspaces and observes RPC disconnection before asserting failure isolation. The unchanged 30-minute soak and adjacent-version native matrices were not repeated for these review fixes.

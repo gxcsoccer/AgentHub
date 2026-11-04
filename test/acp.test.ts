@@ -101,7 +101,7 @@ test('send permission cannot become prompt or session creation permission', asyn
   await assert.rejects(hub.createSession(a, tmpdir(), 'agent'), /authorized/);
   await assert.rejects(hub.cancel(s.address, 'agent'), /authorized/);
 });
-test('lost ACP session/new closes the owned backend and cannot leave an earlier session busy', async (t) => {
+test('lost ACP session/new blocks further creation while existing sessions remain usable', async (t) => {
   const a = new AcpAdapter({
     instance: 'managed',
     command: process.execPath,
@@ -112,15 +112,53 @@ test('lost ACP session/new closes the owned backend and cannot leave an earlier 
   t.after(() => a.close());
   const first = await a.createSession(tmpdir());
   await assert.rejects(a.createSession(tmpdir()));
-  assert.equal((await a.getSession(first.address)).status, 'closed');
-  await assert.rejects(a.createSession(tmpdir()), /closed/);
-  await assert.rejects(
-    a.send({
-      ...message(first.address, 'no replay'),
-      hopCount: 0,
-      expiresAt: new Date(Date.now() + 10000).toISOString(),
-    }),
-    /closed/,
+  assert.equal((await a.getSession(first.address)).status, 'idle');
+  assert.equal((await a.getSession(first.address)).metadata?.sessionCreationBlocked, true);
+  await assert.rejects(a.createSession(tmpdir()), /creation.*blocked/i);
+  assert.equal(
+    (
+      await a.send({
+        ...message(first.address, 'still usable'),
+        hopCount: 0,
+        expiresAt: new Date(Date.now() + 10000).toISOString(),
+      })
+    ).status,
+    'replied',
   );
-  assert.equal((await a.history(first.address)).data.length, 0);
+  assert.equal((await a.history(first.address)).data.at(-1)?.text, 'echo:still usable');
 });
+for (const [envKey, blocked] of [
+  ['AGENTHUB_TEST_REJECT_NEW', false],
+  ['AGENTHUB_TEST_FAIL_NEW', true],
+] as const) {
+  test(`ACP creation failure ${envKey} preserves an in-flight permission and prompt`, async (t) => {
+    const a = new AcpAdapter({
+      instance: 'managed',
+      command: process.execPath,
+      args: [fileURLToPath(new URL('./acp-agent.js', import.meta.url))],
+      env: { [envKey]: '1' },
+      timeoutMs: 5000,
+      permissionTtlMs: 5000,
+    });
+    const hub = new AgentHub([a]);
+    t.after(() => hub.close());
+    const first = await hub.createSession(a, tmpdir());
+    const prompt = hub.prompt(message(first.address, 'permission'));
+    const deadline = Date.now() + 3000;
+    while (!a.pendingRequests().length && Date.now() < deadline) await delay(5);
+    const pending = a.pendingRequests()[0];
+    assert(pending, 'fixture prompt reached the pending permission');
+    await assert.rejects(hub.createSession(a, tmpdir()));
+    assert.equal((await a.getSession(first.address)).status, 'busy');
+    assert.equal((await a.getSession(first.address)).metadata?.sessionCreationBlocked, blocked);
+    assert.equal(a.pendingRequests()[0]?.id, pending.id);
+    a.respondToRequest(pending.id, { outcome: { outcome: 'selected', optionId: 'allow' } });
+    assert.equal((await prompt).status, 'replied');
+    assert.equal(
+      (await hub.prompt(message(first.address, 'after failure'))).reply?.text,
+      'echo:after failure',
+    );
+    if (blocked) await assert.rejects(hub.createSession(a, tmpdir()), /creation.*blocked/i);
+    else assert.notDeepEqual((await hub.createSession(a, tmpdir())).address, first.address);
+  });
+}
