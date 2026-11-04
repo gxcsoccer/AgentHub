@@ -129,3 +129,7 @@ smoke:claude-initiated -- --run 通过五项检查：真实 Claude 模型主动�
 当前版本矩阵首次在 Codex 忙碌场景失败：原生历史证明第二条消息在同一轮出现一次，但模型只回复第一条便结束，没有为第二条给出关联回复。失败保留在 `compat-codex-0166-claude-2318.json`。测试指令现明确要求先处理所有已送达消息再结束；gate 提醒不包含消息 ID 或正文，不能代替原生投递。这是测试指令调整，不是传输保证，也没有自动重发原消息。后端接受和历史落盘仍不证明模型已处理或一定回复。
 
 另保留 `acp-live-first.json`、`independent-backends-first.json`：新启动 Codex 的配置文件拒绝 `approval_policy="untrusted"`。当前脚本使用 on-request 审批，继续限制只读执行。新增回归测试还验证：ACP `session/new` 响应丢失时关闭托管后端，后续操作不能自动重启它。
+
+30 分钟合成负载通过：macOS arm64 / Node v26.12.1，49,856 次唯一 HTTP 提交、6,579 次重复核验、347 次服务／SQLite 重开。原生调用数与唯一请求数一致，持久事件游标在重开后保留。相对首次采样，GC 后堆变化 4.01 MiB、RSS 变化 48.55 MiB；采样文件描述符 21–21，活动资源 4–4，全部在脚本阈值内。私有报告：`.local/verification/soak-1800.json`。这是合成适配器结果，不是模型吞吐量或生产可靠性保证。
+
+代码提交 304ec1a 的九个 [CI 任务](https://github.com/gxcsoccer/AgentHub/actions/runs/41847300219) 全部通过，覆盖 Linux/macOS Node 22／24／26、Windows Node 22／24 可移植子集及合成负载。已下载并核验上传的合成报告：Linux x64 / Node 24.22.2，30 秒、816 次唯一提交、五次重开。独立的手动负载工作流合并到默认分支后才能触发；未将本次未合并 PR 描述成已完成该手动触发验收。
