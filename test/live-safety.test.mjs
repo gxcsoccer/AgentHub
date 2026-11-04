@@ -263,7 +263,12 @@ test('owned command capture drains output and stops its supervisor after complet
   assert.notEqual(run.child.signalCode, null);
 });
 for (const [name, code, options, error] of [
-  ['failure', 'process.exit(7)', {}, /exited: 7/],
+  [
+    'failure',
+    "process.stdout.write('before failure'); process.stderr.write('diagnostic'); process.exit(7)",
+    {},
+    /exited: 7/,
+  ],
   ['early timeout', 'setInterval(()=>{},1000)', { timeout: 1 }, /timed out/],
   [
     'output limit',
@@ -274,7 +279,14 @@ for (const [name, code, options, error] of [
 ]) {
   test(`owned command ${name} still closes its supervisor and pipes`, async () => {
     const run = live.execOwned(process.execPath, ['-e', code], { ...options, graceMs: 50 });
-    await assert.rejects(run, error);
+    await assert.rejects(run, (failure) => {
+      assert.match(failure.message, error);
+      if (name === 'failure') {
+        assert.equal(failure.stdout, 'before failure');
+        assert.equal(failure.stderr, 'diagnostic');
+      }
+      return true;
+    });
     assert.notEqual(run.child.signalCode, null);
     assert(run.child.stdout.destroyed);
   });

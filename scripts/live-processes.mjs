@@ -116,7 +116,10 @@ export function execOwned(command, args, options = {}) {
       clearTimeout(timer);
       await stopOwned(child, options.graceMs ?? 3000);
     })
-    .then(() => ({ stdout, stderr }));
+    .then(() => ({ stdout, stderr }))
+    .catch((error) => {
+      throw Object.assign(error, { stdout, stderr });
+    });
   result.child = child;
   return result;
 }
