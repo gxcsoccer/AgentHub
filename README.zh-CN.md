@@ -21,10 +21,10 @@
 
 ## 安装发布包
 
-首发渠道为 [GitHub Releases](https://github.com/gxcsoccer/AgentHub/releases)，尚未发布到 npm registry。
+通过 npm 安装 CLI，需要 Node.js 22.13 或更新版本：
 
 ```sh
-npm install --global --registry=https://registry.npmjs.org https://github.com/gxcsoccer/AgentHub/releases/download/v0.1.0/agenthub-0.1.0.tgz
+npm install -g agenthub
 agenthub --help
 ```
 

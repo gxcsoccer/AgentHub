@@ -17,7 +17,7 @@ Node 25.9.0 的 V8 统计显示，新代码编译产物 `dist/src/**/*.js` 的�
 
 新增测试覆盖 SQLite 事务回滚、保留期、损坏/schema/路径拒绝、写盘失败、单实例锁、HTTP/CLI 显式 attach 和保守的工具就绪判断。独立测试子进程在原消息提交、回复转发提交时被实际 SIGKILL，验证锁释放、不重发不确定消息、固定 ID 保留，以及模拟 Claude 迟到回复重新绑定原 socket 后只转发一次。
 
-适配器单元测试使用假对端或 RPC，不代表真实模型已收到消息。完整检查已在本机 Node 22.23.2 和 25.9.0 上通过。CI 配置覆盖 Linux/macOS、Node 22/24，不使用真实凭证或执行模型测试；首个远端 CI 已通过 Linux／macOS Node 22／24 完整检查、Windows Node 22／24 的 11 项可移植测试及 Linux 合成负载检查；改名后的最终提交会再次检查。
+适配器单元测试使用假对端或 RPC，不代表真实模型已收到消息。完整检查已在本机 Node 22.23.2 和 25.9.0 上通过。CI 配置覆盖 Linux/macOS、Node 22/24，不使用真实凭证或执行模型测试；首个远端 CI 已通过 Linux／macOS Node 22／24 完整检查、Windows Node 22／24 的 11 项可移植测试及 Linux 合成负载检查；改名后的 49ceafb 提交七个 jobs 已全部通过：https://github.com/gxcsoccer/AgentHub/actions/runs/41839976102；本地空 npm 缓存安装也已通过。
 
 ## 真实跨 harness 验证
 

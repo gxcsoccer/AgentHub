@@ -21,10 +21,10 @@ The original Codex Session Bridge is retained under `vendor/codex-bridge`, with 
 
 ## Install the release
 
-The initial distribution channel is [GitHub Releases](https://github.com/gxcsoccer/AgentHub/releases). The npm registry package is not published yet.
+Install the CLI from npm (Node.js 22.13 or newer):
 
 ```sh
-npm install --global --registry=https://registry.npmjs.org https://github.com/gxcsoccer/AgentHub/releases/download/v0.1.0/agenthub-0.1.0.tgz
+npm install -g agenthub
 agenthub --help
 ```
 
