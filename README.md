@@ -19,6 +19,15 @@ Messages retain native semantics: `tool_output` and `peer_message`. The common A
 
 The original Codex Session Bridge is retained under `vendor/codex-bridge`, with its 22-operation HTTP/SSE API, fetch SDK, OpenAPI, tests and MIT license. Its native lifecycle and user-input operations are available separately through the `codex-session-bridge` executable and `agenthub/codex-bridge` exports. See [NOTICE](NOTICE).
 
+## Install the release
+
+The initial distribution channel is [GitHub Releases](https://github.com/gxcsoccer/AgentHub/releases). The npm registry package is not published yet.
+
+```sh
+npm install --global --registry=https://registry.npmjs.org https://github.com/gxcsoccer/AgentHub/releases/download/v0.1.0/agenthub-0.1.0.tgz
+agenthub --help
+```
+
 ## Run from source
 
 Requirements: Node.js 22.13+, an already running Codex App Server and/or Claude Code. Unix socket integration is validated on macOS; Windows clients/managed ACP and experimental one-way native pipes are described in [Extensions](docs/EXTENSIONS.md).

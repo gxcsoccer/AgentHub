@@ -19,6 +19,15 @@
 
 原 Codex Session Bridge 的源码、22 个接口、SDK、OpenAPI、中英文文档及测试完整保留在 `vendor/codex-bridge`。原生生命周期和用户输入接口由独立的 `codex-session-bridge` 命令及 `agenthub/codex-bridge` 导出保留。[来源及许可证](NOTICE)。
 
+## 安装发布包
+
+首发渠道为 [GitHub Releases](https://github.com/gxcsoccer/AgentHub/releases)，尚未发布到 npm registry。
+
+```sh
+npm install --global --registry=https://registry.npmjs.org https://github.com/gxcsoccer/AgentHub/releases/download/v0.1.0/agenthub-0.1.0.tgz
+agenthub --help
+```
+
 ## 启动
 
 需要 Node.js 22.13+，以及已运行的 Codex App Server 和/或 Claude Code。真实验证平台为 macOS；Windows 客户端、ACP 及实验性单向 pipe 的范围见[扩展说明](docs/EXTENSIONS.zh-CN.md)。
