@@ -1,5 +1,5 @@
 {
-  "name": "agenthub",
+  "name": "@gxcsoccer/agenthub",
   "version": "0.1.0",
   "description": "One API across coding harnesses: existing sessions, messages and explicit delivery semantics.",
   "type": "module",

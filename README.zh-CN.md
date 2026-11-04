@@ -17,14 +17,14 @@
 
 统一接口明确区分 `tool_output` 和 `peer_message`，不会静默转换成用户输入。读取和发送均不自动启动、恢复、中断或重启会话，也不修改 Claude 的接收策略和权限。
 
-原 Codex Session Bridge 的源码、22 个接口、SDK、OpenAPI、中英文文档及测试完整保留在 `vendor/codex-bridge`。原生生命周期和用户输入接口由独立的 `codex-session-bridge` 命令及 `agenthub/codex-bridge` 导出保留。[来源及许可证](NOTICE)。
+原 Codex Session Bridge 的源码、22 个接口、SDK、OpenAPI、中英文文档及测试完整保留在 `vendor/codex-bridge`。原生生命周期和用户输入接口由独立的 `codex-session-bridge` 命令及 `@gxcsoccer/agenthub/codex-bridge` 导出保留。[来源及许可证](NOTICE)。
 
 ## 安装发布包
 
 通过 npm 安装 CLI，需要 Node.js 22.13 或更新版本：
 
 ```sh
-npm install -g agenthub
+npm install -g @gxcsoccer/agenthub
 agenthub --help
 ```
 
@@ -79,7 +79,7 @@ agenthub doctor --harness claude --instance local --timeout-ms 10000
 ## 基础库与回复路由
 
 ```ts
-import { AgentHub, CodexAdapter, ClaudeAdapter } from 'agenthub';
+import { AgentHub, CodexAdapter, ClaudeAdapter } from '@gxcsoccer/agenthub';
 
 const hub = new AgentHub([
   new CodexAdapter({ instance: 'local' }),
@@ -92,7 +92,7 @@ try {
 }
 ```
 
-其他应用使用 `agenthub/client` 中的 `AgentHubClient` 访问本地服务；该导出仅依赖 fetch。CLI/MCP 共用守护进程中的回执和回调监听。
+其他应用使用 `@gxcsoccer/agenthub/client` 中的 `AgentHubClient` 访问本地服务；该导出仅依赖 fetch。CLI/MCP 共用守护进程中的回执和回调监听。
 
 消息可指定 `replyTo`，将第一条关联回复转发到指定会话。转发有独立消息 ID，保留 `inReplyTo`，增加跳数，不再安装回复路由。原回执包含 `forwardedMessageId` 和可能的 `forwardError`。
 

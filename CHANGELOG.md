@@ -14,4 +14,4 @@ Initial public release of AgentHub, a TypeScript middleware for existing Codex a
 - Experimental Windows one-way Claude named pipes; no native reply confirmation. Windows daemon storage is ephemeral.
 - Isolated real-model acceptance, crash tests, compatibility CI and synthetic sustained-load checks. Verification scope is documented; Doubao remains pending.
 
-See [verification](docs/VERIFICATION.md) and [extension boundaries](docs/EXTENSIONS.md). The public package name and CLI command are `agenthub`. npm is the primary distribution channel; GitHub release assets provide a matching tarball and checksum.
+See [verification](docs/VERIFICATION.md) and [extension boundaries](docs/EXTENSIONS.md). The public package is `@gxcsoccer/agenthub`; the CLI command is `agenthub`. npm is the primary distribution channel; GitHub release assets provide a matching tarball and checksum.

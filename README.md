@@ -17,14 +17,14 @@ One API across coding harnesses. A TypeScript library and local service for comm
 
 Messages retain native semantics: `tool_output` and `peer_message`. The common API never falls back to user input. It never starts, resumes, restarts, or interrupts a session implicitly. Claude's inbound accept/hold/refuse policy remains in control.
 
-The original Codex Session Bridge is retained under `vendor/codex-bridge`, with its 22-operation HTTP/SSE API, fetch SDK, OpenAPI, tests and MIT license. Its native lifecycle and user-input operations are available separately through the `codex-session-bridge` executable and `agenthub/codex-bridge` exports. See [NOTICE](NOTICE).
+The original Codex Session Bridge is retained under `vendor/codex-bridge`, with its 22-operation HTTP/SSE API, fetch SDK, OpenAPI, tests and MIT license. Its native lifecycle and user-input operations are available separately through the `codex-session-bridge` executable and `@gxcsoccer/agenthub/codex-bridge` exports. See [NOTICE](NOTICE).
 
 ## Install the release
 
 Install the CLI from npm (Node.js 22.13 or newer):
 
 ```sh
-npm install -g agenthub
+npm install -g @gxcsoccer/agenthub
 agenthub --help
 ```
 
@@ -81,7 +81,7 @@ It sends no probes, opens no callbacks and tests neither disk writes nor model r
 ## Library and SDK
 
 ```ts
-import { AgentHub, CodexAdapter, ClaudeAdapter } from 'agenthub';
+import { AgentHub, CodexAdapter, ClaudeAdapter } from '@gxcsoccer/agenthub';
 
 const hub = new AgentHub([
   new CodexAdapter({ instance: 'local' }),
@@ -95,7 +95,7 @@ try {
 }
 ```
 
-For a separate application, import `AgentHubClient` from `agenthub/client` and connect to the daemon. This fetch-only entry point does not import Node transports. The daemon keeps receipts and callback listeners alive across CLI/MCP calls.
+For a separate application, import `AgentHubClient` from `@gxcsoccer/agenthub/client` and connect to the daemon. This fetch-only entry point does not import Node transports. The daemon keeps receipts and callback listeners alive across CLI/MCP calls.
 
 Optional `replyTo` routes the first correlated reply to another explicit session. Forwarding uses a fresh message ID, preserves `inReplyTo`/correlation, increments the hop count, and installs no further reply route. Check `forwardedMessageId` and `forwardError` on the original receipt.
 
