@@ -11,7 +11,7 @@ npm run check
 
 当前包含 93 项 AgentHub 测试与原 Codex Session Bridge 的 41 项测试，共 134 项通过，并执行格式、严格 TypeScript 和覆盖率门槛检查。原 Bridge 从自己的目录运行测试，保留其原始路径与契约。
 
-新增测试覆盖：并发幂等、容量/过期、载荷冲突、不确定投递、提前/迟到回复、有限回复转发、关闭竞态、Codex 工具输出与显式审批、Claude 本地 socket 协议和反向回调、策略控制帧、损坏/过期回调、历史大小和游标变化、认证/Origin、非法 HTTP 请求、全部 JSON CLI 命令、真实 stdio 子进程中的七个 MCP 工具、SSE 慢消费者/CRLF/多行数据以及 OpenAPI 一致性。
+新增测试覆盖：并发幂等、容量/过期、载荷冲突、不确定投递、提前/迟到回复、有限回复转发、关闭竞态、Codex 工具输出与显式审批、Claude 本地 socket 协议和反向回调、策略控制帧、损坏/过期回调、历史大小和游标变化、认证/Origin、非法 HTTP 请求、原有 JSON CLI 命令、真实 stdio 子进程中的七个 MCP 工具、SSE 慢消费者/CRLF/多行数据以及 OpenAPI 一致性。
 
 Node 25.9.0 的 V8 统计显示，新代码编译产物 `dist/src/**/*.js` 的行覆盖率为 96.40%、分支 87.17%、函数 93.92%，不含原 Bridge 和真实 smoke 脚本。`npm run test:coverage` 强制总体门槛 90%/80%/85%，已纳入 check 和 CI。覆盖率不能证明穷尽行为或真实兼容。本轮测试发现并修复了非法 URL 返回 500、SSE 结束后继续写入、CRLF/数据块解析错误、构造失败遗留监听器和非 Error 异常处理问题。
 
@@ -41,7 +41,7 @@ Node 25.9.0 的 V8 统计显示，新代码编译产物 `dist/src/**/*.js` 的�
 
 最初每次四项功能检查均通过。扩展矩阵进一步验证：
 
-- JSON CLI 经 HTTP 提交，SDK 驱动跨 harness 委派，独立 stdio 进程逐个调用七个 MCP 工具，SSE 返回关联回复。
+- JSON CLI 经 HTTP 提交，SDK 驱动跨 harness 委派，独立 stdio 进程逐个调用该历史验收当时的六个 MCP 工具，SSE 返回关联回复。
 - Claude hold 后释放、refuse、相同载荷重试和不同载荷冲突、忙碌排队、状态等待超时与迟到回复。专用 gate 工具确保目标确实处于忙碌状态。
 - Codex 忙碌时加入同一 turn、去重、显式回答 gate，以及没有回复工具的会话接收消息后仍不虚报关联回复。
 - 传输断连时报告缺口、保留回执、重新读取历史，不自动重发或 attach。

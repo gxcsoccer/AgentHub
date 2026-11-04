@@ -11,7 +11,7 @@ npm run check
 
 The suite contains 93 AgentHub tests and the 41 original Codex Session Bridge tests: 134 passing tests. The root check also runs formatting, strict TypeScript checks and coverage thresholds. The imported bridge is tested from its own directory, preserving its original fixtures and contract.
 
-AgentHub coverage includes concurrent idempotency, capacity/expiry, payload conflicts, uncertain delivery, early/late replies, bounded reply forwarding, shutdown races, Codex tool-output delivery and explicit approval responses, Claude NDJSON framing and reverse callbacks over local test sockets, policy controls, malformed/expired callbacks, bounded history and cursor changes, authentication/origins, malformed HTTP requests, every JSON CLI command, all seven MCP tools through a real stdio child, SSE slow consumers/CRLF/multiline frames, and OpenAPI consistency.
+AgentHub coverage includes concurrent idempotency, capacity/expiry, payload conflicts, uncertain delivery, early/late replies, bounded reply forwarding, shutdown races, Codex tool-output delivery and explicit approval responses, Claude NDJSON framing and reverse callbacks over local test sockets, policy controls, malformed/expired callbacks, bounded history and cursor changes, authentication/origins, malformed HTTP requests, the original JSON CLI commands, all seven current MCP tools through a real stdio child, SSE slow consumers/CRLF/multiline frames, and OpenAPI consistency.
 
 On Node 25.9.0, V8 coverage of compiled `dist/src/**/*.js` was 96.40% lines, 87.17% branches and 93.92% functions. This excludes the retained bridge and live scripts. `npm run test:coverage` enforces aggregate minimums of 90%/80%/85%; `npm run check` and CI include that command. These metrics do not prove exhaustive behavior or live compatibility. The audit found and fixed malformed-URL 500 responses, writes after SSE termination, CRLF/chunk-size parser errors, partial-constructor listener leaks and non-Error adapter rejection handling.
 
@@ -61,7 +61,7 @@ A separate real recovery run passed all **6 functional checks**, plus cleanup, i
 5. Three explicit attachments preserve model, directory, approval policy/reviewer and read-only sandbox with network disabled.
 6. Native histories preserve identity and exact input count: one Claude peer delivery, three Codex tool outputs (including controller bootstrap), no shell/file/web activity or user-message injection.
 
-The run used a newly created Claude process with an explicitly bound private inbox and three allowlisted Codex threads. Every test process exited and every owned Codex thread was archived/unloaded; only owned sessions were mutated. It does not establish callback delivery while Hub is down, machine/power-loss behavior, arbitrary live tool installation, or automatic listener recovery. SSE cursors still expire across restart.
+The run used a newly created Claude process with an explicitly bound private inbox and three allowlisted Codex threads. Every test process exited and every owned Codex thread was archived/unloaded; only owned sessions were mutated. It does not establish callback delivery while Hub is down, machine/power-loss behavior, arbitrary live tool installation, or automatic listener recovery. That historical recovery run used process-local events; schema 2 now separately verifies durable cursors.
 
 The existing live matrix was rerun after the recovery changes: all 14 in-run checks passed in `.local/verification/entrypoints-matrix-after-recovery.json`, with successful archive/unload and owned-process cleanup. This is separate from the earlier 14-check report, which included an additional post-run read-only audit.
 
@@ -93,7 +93,7 @@ npm run smoke:doctor -- --run
 ## Limits
 
 - The matrix covers the named scenarios, not all combinations, long-duration load, every approval subtype or every harness/provider version. CLI success paths and MCP tools are exercised individually; branch coverage remains below 100%.
-- No Doubao runtime acceptance, Windows inbox implementation, arbitrary existing-session tool registration, or native Codex agent-mailbox equivalence is claimed.
+- No Doubao runtime acceptance, Windows native-model acceptance, arbitrary existing-session tool registration, or native Codex agent-mailbox equivalence is claimed.
 - MCP is exercised over real stdio and HTTP against live harnesses; this still does not prove Doubao accepts a particular plugin configuration.
 - The original bridge's historical 22-operation isolated acceptance is documented in `vendor/codex-bridge/docs/VERIFICATION.md`. Importing that evidence does not mean all 22 operations were rerun live for AgentHub or normalized into the new API.
 - CLI version checks cannot establish the version of every already-running Claude process. The native protocol adapter remains explicitly enabled and version-specific.

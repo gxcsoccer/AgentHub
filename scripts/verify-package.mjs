@@ -23,7 +23,9 @@ try {
     'npm',
     [
       'install',
-      '--offline',
+      '--prefer-offline',
+      '--fetch-timeout=15000',
+      '--fetch-retries=1',
       '--ignore-scripts',
       '--no-audit',
       '--no-fund',
