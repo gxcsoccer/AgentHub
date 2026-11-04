@@ -29,4 +29,5 @@ jobs:
         with:
           name: synthetic-soak
           path: .local/verification/soak-manual.json
+          include-hidden-files: true
           retention-days: 14

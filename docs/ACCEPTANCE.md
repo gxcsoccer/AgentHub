@@ -54,6 +54,6 @@ Each row starts its own App Server and runs the native message fault matrix: idl
 node --expose-gc scripts/soak.mjs --seconds 1800 --report .local/verification/soak-1800.json
 ```
 
-The bounded run exercises actual HTTP/SSE/SQLite with a synthetic owned adapter, eight concurrent submissions and four consumer connections per batch, periodic server/storage reopening, deduplication, cursor continuity and resource thresholds. It is not a real-model load test or proof of production stability. Duration is validated as an integer between 5 and 3600 seconds. The separate **Extended synthetic soak** workflow can be dispatched manually; only its synthetic report is uploaded, never model transcripts or credentials.
+The bounded run exercises actual HTTP/SSE/SQLite with a synthetic owned adapter, eight concurrent submissions and four consumer connections per batch, periodic server/storage reopening, deduplication, cursor continuity and resource thresholds. It is not a real-model load test or proof of production stability. Duration is validated as an integer between 5 and 3600 seconds. The separate **Extended synthetic soak** workflow can be dispatched manually after it is merged into the default branch; only its synthetic report is uploaded, never model transcripts or credentials.
 
 Windows work and Doubao runtime integration remain outside this acceptance expansion.

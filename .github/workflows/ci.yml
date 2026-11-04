@@ -48,3 +48,10 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm run build
       - run: node --expose-gc scripts/soak.mjs --seconds 30
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: synthetic-soak-ci
+          path: .local/verification/soak.json
+          include-hidden-files: true
+          retention-days: 14

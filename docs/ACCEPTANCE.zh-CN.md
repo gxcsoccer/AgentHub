@@ -54,6 +54,6 @@ npm run smoke:compatibility -- --run --config /absolute/path/to/matrix.json
 node --expose-gc scripts/soak.mjs --seconds 1800 --report .local/verification/soak-1800.json
 ```
 
-运行实际 HTTP／SSE／SQLite，适配器为合成测试对象。每批八个并发提交、四个消费者连接，周期性重开服务和存储，验证去重、游标连续性和资源阈值。不是实际模型负载，也不证明生产长期稳定。时长必须是 5–3600 秒整数。独立的 **Extended synthetic soak** 工作流支持手动触发，只上传合成负载报告，不上传模型历史或凭证。
+运行实际 HTTP／SSE／SQLite，适配器为合成测试对象。每批八个并发提交、四个消费者连接，周期性重开服务和存储，验证去重、游标连续性和资源阈值。不是实际模型负载，也不证明生产长期稳定。时长必须是 5–3600 秒整数。独立的 **Extended synthetic soak** 工作流合并到默认分支后支持手动触发，只上传合成负载报告，不上传模型历史或凭证。
 
 本次验收扩展不包含 Windows 补齐和豆包运行时对接。
