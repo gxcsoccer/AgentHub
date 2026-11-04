@@ -26,7 +26,8 @@ Requirements: Node.js 22.13+, an already running Codex App Server and/or Claude 
 ```sh
 npm ci
 npm run build
-node dist/src/cli.js serve --config examples/local.json
+npm link
+agenthub serve --config examples/local.json
 ```
 
 The example explicitly enables experimental Claude native messaging. Without a config, Claude discovery/history work but sends are disabled. Codex connects lazily to its existing control socket. No backend is launched.
@@ -34,12 +35,12 @@ The example explicitly enables experimental Claude native messaging. Without a c
 The daemon binds to `127.0.0.1:3211` and creates a private token file at `~/.agenthub/token`. It prints the token path, not the token. Client commands use the same file:
 
 ```sh
-node dist/src/cli.js doctor
-node dist/src/cli.js instances
-node dist/src/cli.js sessions --harness claude
-node dist/src/cli.js sessions --harness codex --search AgentHub
-node dist/src/cli.js send --message-file /absolute/path/message.json
-node dist/src/cli.js status --message-id MESSAGE_UUID --wait-ms 30000
+agenthub doctor
+agenthub instances
+agenthub sessions --harness claude
+agenthub sessions --harness codex --search AgentHub
+agenthub send --message-file /absolute/path/message.json
+agenthub status --message-id MESSAGE_UUID --wait-ms 30000
 ```
 
 `message.json` contains an explicit target and a caller-generated UUID. Replace the IDs with actual values:
@@ -59,9 +60,9 @@ Keep the same message ID and payload when checking a submission again. `transpor
 ## Read-only diagnostics
 
 ```sh
-node dist/src/cli.js doctor
-node dist/src/cli.js doctor --harness codex --session-id SESSION_ID
-node dist/src/cli.js doctor --harness claude --instance local --timeout-ms 10000
+agenthub doctor
+agenthub doctor --harness codex --session-id SESSION_ID
+agenthub doctor --harness claude --instance local --timeout-ms 10000
 ```
 
 `doctor` uses the existing daemon and token, with GET requests only. By default it checks authenticated access and discovery. With a target it checks send/reply prerequisites, distinguishing missing tools, required attachment, disabled Claude sends, unsupported versions and unavailable inboxes. JSON output uses exit codes `0` for ok, `2` for warnings and `1` for errors. Each HTTP request defaults to 10 seconds; inspection is capped at 32 instances, four at a time, with one page of ten sessions per instance. This is a bounded sample, not a complete inventory.
@@ -92,7 +93,7 @@ Optional `replyTo` routes the first correlated reply to another explicit session
 For Codex replies, the owner must register exported `codexReplyTool` when creating the session. `getSession()` reports `replyReadiness`: `ready`, `needs_attach`, `missing_tool`, `unknown`, or `unavailable`. Registration is checked against local session metadata; an unpersisted or inaccessible rollout remains unknown. Sending and reconnecting do not attach a listener. Owners can explicitly attach with the command below after a disconnect or Hub restart. It requires a loaded root with a verified tool, passes no configuration overrides, and acknowledges that an unload between the check and upstream `thread/resume` can cause a cold resume. Arbitrary live tool installation is not supported.
 
 ```sh
-node dist/src/cli.js attach-reply --harness codex --session-id SESSION_ID --accept-resume-race
+agenthub attach-reply --harness codex --session-id SESSION_ID --accept-resume-race
 ```
 
 The daemon persists receipts, normalized payload hashes, reply routes and callback correlations in `state.sqlite` beside its token file by default. `--state-file FILE` / `AGENTHUB_STATE_FILE` changes the path; `--ephemeral` opts out. For library persistence use `await openLocalHub(config, { stateFile: absolutePath })`, or pass `await openReceiptStore(absolutePath)` to `new AgentHub(adapters, { store })` and await `hub.ready()`. Plain `new AgentHub(...)` remains in memory. State contains plaintext message/reply content: use a private 0700 directory; database and lock files are 0600.
@@ -100,7 +101,7 @@ The daemon persists receipts, normalized payload hashes, reply routes and callba
 ## MCP and Doubao
 
 ```sh
-node dist/src/cli.js mcp --origin-name 'Doubao Work'
+agenthub mcp --origin-name 'Doubao Work'
 ```
 
 This stdio facade uses the official MCP TypeScript SDK and exposes seven tools: `list_instances`, `list_sessions`, `get_session`, `get_history`, `search_history`, `send_message`, `get_message_status`. It connects to the same local daemon. Approval and lifecycle mutation tools are not exposed to agents.

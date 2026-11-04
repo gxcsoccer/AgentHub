@@ -26,18 +26,19 @@
 ```sh
 npm ci
 npm run build
-node dist/src/cli.js serve --config examples/local.json
+npm link
+agenthub serve --config examples/local.json
 ```
 
 示例配置显式开启 Claude 原生发送。不传配置时，Claude 默认只提供发现/历史，发送关闭。Codex 按需连接已有 control socket。服务绑定 `127.0.0.1:3211`，私有令牌保存在 `~/.agenthub/token`，终端仅显示路径。
 
 ```sh
-node dist/src/cli.js doctor
-node dist/src/cli.js instances
-node dist/src/cli.js sessions --harness claude
-node dist/src/cli.js sessions --harness codex --search AgentHub
-node dist/src/cli.js send --message-file /absolute/path/message.json
-node dist/src/cli.js status --message-id MESSAGE_UUID --wait-ms 30000
+agenthub doctor
+agenthub instances
+agenthub sessions --harness claude
+agenthub sessions --harness codex --search AgentHub
+agenthub send --message-file /absolute/path/message.json
+agenthub status --message-id MESSAGE_UUID --wait-ms 30000
 ```
 
 消息文件格式如下，实际使用前替换目标 ID，并为新消息生成 UUID：
@@ -57,9 +58,9 @@ node dist/src/cli.js status --message-id MESSAGE_UUID --wait-ms 30000
 ## 只读接入诊断
 
 ```sh
-node dist/src/cli.js doctor
-node dist/src/cli.js doctor --harness codex --session-id SESSION_ID
-node dist/src/cli.js doctor --harness claude --instance local --timeout-ms 10000
+agenthub doctor
+agenthub doctor --harness codex --session-id SESSION_ID
+agenthub doctor --harness claude --instance local --timeout-ms 10000
 ```
 
 `doctor` 复用现有服务与令牌，只调用 GET。默认检查认证及实例发现；指定会话时检查发送能力和回复前置条件，区分缺少工具、需要 attach、未开启 Claude 发送、版本不匹配及 inbox 不可用。输出 JSON，退出码为 `0` 通过、`2` 提醒、`1` 错误。每个 HTTP 请求默认超时 10 秒；最多检查 32 个实例，并发 4，每个只读取一页 10 条样本，不是全量会话清单。
@@ -89,7 +90,7 @@ try {
 Codex 回复需要所有者在创建会话时注册导出的 `codexReplyTool`。`getSession()` 返回 `replyReadiness`：`ready`、`needs_attach`、`missing_tool`、`unknown` 或 `unavailable`。工具注册根据本地会话元数据核验；日志尚未持久化或无法读取时保持 unknown。发送和重连不自动建立监听。断连或 Hub 重启后，所有者可显式执行下面的 attach：仅接受已加载、工具已核验的根会话，不传配置覆盖；调用方明确接受 loaded 检查与上游 thread/resume 之间发生卸载可能恢复会话的竞态。不能动态为任意已有会话安装工具。
 
 ```sh
-node dist/src/cli.js attach-reply --harness codex --session-id SESSION_ID --accept-resume-race
+agenthub attach-reply --harness codex --session-id SESSION_ID --accept-resume-race
 ```
 
 守护进程默认将回执、载荷哈希、回复路由和回调关联持久化到令牌文件旁的 `state.sqlite`。用 `--state-file FILE` / `AGENTHUB_STATE_FILE` 修改位置，`--ephemeral` 关闭持久化。基础库可使用 `await openLocalHub(config, { stateFile: absolutePath })`，或将 `await openReceiptStore(absolutePath)` 传给 `new AgentHub(adapters, { store })` 后等待 `hub.ready()`；直接构造且不传 store 仍为内存模式。状态包含明文消息和回复，目录要求 0700，数据库和锁文件为 0600。
@@ -97,7 +98,7 @@ node dist/src/cli.js attach-reply --harness codex --session-id SESSION_ID --acce
 ## 豆包与 MCP
 
 ```sh
-node dist/src/cli.js mcp --origin-name 'Doubao Work'
+agenthub mcp --origin-name 'Doubao Work'
 ```
 
 MCP 使用官方 SDK，提供会话发现、详情、历史、消息提交和状态查询、全文检索共七个工具。面向 agent 的工具不开放审批、恢复或中断操作。[配置模板](examples/mcp.json)。
