@@ -1,14 +1,31 @@
 # Doubao Work integration
 
-The preferred path is **local stdio MCP**. A host supporting local MCP can use the generated configuration to call the Hub, request work from authorized Claude/Codex sessions and retrieve correlated replies without installing an AgentHub plugin. This development branch provides configuration generation and seven MCP tools; `plugins/doubao` is an optional local CLI plus Skill package. **Loading this configuration and invoking tools inside Doubao still require host acceptance.** Generic MCP tests do not establish Doubao support.
+Use **local stdio MCP** to request work from authorized Claude/Codex sessions and retrieve replies in Doubao, without installing an AgentHub plugin. On macOS, Doubao Work **2.35.15** loaded the seven tools and displayed real replies from both harnesses in an independent test conversation. The verification record separates host observation from backend tests.
 
-This is an external client, not a verified native Doubao session. It does not implement arbitrary Doubao session discovery/history, unsolicited wake-up, Agent OpenAPI or MCP Events adapters. A passing CLI/HTTP test is not evidence that Doubao loaded the plugin.
+This development branch adds the unified `agenthub setup` commands. Published **0.2.0** supplies the underlying CLI/MCP API; it does **not** include these setup commands. Native Doubao conversation identity, arbitrary session discovery/history and proactive wake-up remain future work.
 
-## Configure
+## Build and select targets
 
-Requirements: Node.js 22.13+, this development branch and dedicated running test sessions. Run `npm ci && npm run build` in the checkout first. This path uses the compiled local CLI and does not depend on an unpublished npm version. Claude/Codex have native macOS acceptance evidence; Doubao on Linux still needs host verification. Windows remains pending. The generator only creates isolated configuration.
+Use Node.js 22.13+ and this checkout. Until the next release, run the source CLI with a temporary shell function:
 
-Create `targets.json` with explicit addresses:
+```sh
+npm ci
+npm run build
+AGENTHUB_CLI="$PWD/dist/src/cli.js"
+agenthub() { node "$AGENTHUB_CLI" "$@"; }
+agenthub setup targets --harness claude
+agenthub setup targets --harness codex
+```
+
+Target discovery is read-only. Codex lists loaded roots, and Claude lists native live sessions. Use `--cursor` when a continuation is returned. Select an exact UUID from the results; initialization does not silently select or contact a working session.
+
+For one target:
+
+```sh
+agenthub setup init --harness claude --session-id CLAUDE_TEST_UUID
+```
+
+For several, create `targets.json` and initialize once:
 
 ```json
 [
@@ -17,81 +34,116 @@ Create `targets.json` with explicit addresses:
 ]
 ```
 
-Keep only the targets you intend to authorize. Wildcards, guessed names, other harnesses and nonlocal instance names are rejected.
-
 ```sh
-mkdir -p "$HOME/.agenthub"
-node scripts/setup-doubao.mjs --targets /ABS/targets.json
+agenthub setup init --targets /ABS/targets.json
 ```
 
-This creates a new `$HOME/.agenthub/doubao` directory (0700), containing private files (0600): separate random owner/caller tokens, `access.json` with target-specific read/send grants, `hub.json`, connector profiles, separate enrollment credentials and **`mcp.json`**. Existing directories are never overwritten. Output includes `mcpConfigPath` and `startArgv`, never token values. `--directory /ABS/NEW_DIRECTORY` and `--port 3214` customize all generated paths and URLs. `--cli /ABS/dist/src/cli.js` selects another compiled CLI. MCP launches absolute Node/CLI paths with literal argument boundaries, including paths containing spaces.
+Keep only the targets you intend to authorize. The generator accepts explicit local Claude/Codex UUIDs, creates `$HOME/.agenthub/doubao` with mode 0700, and refuses to overwrite an existing directory. `--directory /ABS/NEW_DIRECTORY` and `--port 3214` customize paths and the port; a custom parent must already exist and be canonical. Credentials and configuration are 0600; the generated `agenthub-mcp` launcher is 0700.
 
-After review, run the dedicated Hub:
+Files include separate owner/caller/enrollment tokens, target-specific read/send grants, Hub and connector profiles, a setup manifest, `mcp.json` and the launcher. Output contains paths and argument arrays, never token values. MCP uses absolute Node/CLI paths and caller credentials, clearing inherited `AGENTHUB_TOKEN`. Keep the checkout or installation at that path. For changed targets or installation paths, stop the old setup and generate a new directory; lifecycle commands reject manually edited generated files.
 
-```sh
-env -u AGENTHUB_TOKEN node dist/src/cli.js serve --port 3214 \
-  --config "$HOME/.agenthub/doubao/hub.json" \
-  --token-file "$HOME/.agenthub/doubao/owner.token" \
-  --access-file "$HOME/.agenthub/doubao/access.json" \
-  --connector-file "$HOME/.agenthub/doubao/connectors.json" \
-  --state-file "$HOME/.agenthub/doubao/state.sqlite"
-```
+## Start, connect and load in Doubao
 
-An occupied port is an error, not permission to stop another daemon. The generator does not edit existing configurations, start services, install MCP tools, change host permissions or send messages. Policy changes require an owner edit and Hub restart. MCP and the optional plugin use only `caller.token`. The generated command uses `/usr/bin/env -u AGENTHUB_TOKEN` to remove inherited owner credentials before selecting the caller file. Configuration contains no raw secrets.
-
-The owner can prepare Codex reply tools with:
+Run the managed Hub in its own terminal, using the same source CLI:
 
 ```sh
-env -u AGENTHUB_TOKEN node dist/src/cli.js connect --harness codex --session-id CODEX_TEST_UUID \
-  --connector-profile "$HOME/.agenthub/doubao/codex-client.json" \
-  --url http://127.0.0.1:3214 --token-file "$HOME/.agenthub/doubao/owner.token"
+agenthub setup serve --directory "$HOME/.agenthub/doubao"
 ```
 
-Codex uses the distinct MCP name `agenthub_doubao`; reload affects the instance and conflicting configuration is not overwritten. Claude can reply through its native callback. To enable its unified CLI tools, the owner may use the equivalent `connect` with `--harness claude`, `claude-client.json` and `--wait-ms 60000`. This can start a Claude model turn under its existing Bash permissions. These are owner operations, not plugin actions. See [connector setup](CONNECTOR_SETUP.md).
+This stays in the foreground. An occupied port produces an error. Initialize does not start a Hub or send messages. In a second terminal, prepare Codex's reply tools when Codex was selected:
 
-Add the generated `agenthub` entry from `mcp.json` through the host's local stdio MCP configuration interface, preserving other servers. If the interface separates command and args, copy each value literally. The local MCP entry in Doubao Work 2.35.15 has not yet been confirmed. A generic [template](../examples/mcp.json) is provided.
+```sh
+agenthub setup connect --directory "$HOME/.agenthub/doubao" --harness codex
+```
 
-After loading, expect seven tools: `list_instances`, `list_sessions`, `get_session`, `get_history`, `search_history`, `send_message`, `get_message_status`. Discover an authorized target, send `messageKind: request` and poll its UUID. Tool descriptions include reply and bounded polling guidance, so a separate Skill is optional. Report pending IDs for later user-directed checks.
+The generated MCP name is `agenthub_doubao`; native reload affects the Codex instance and preserves conflicting configuration. Claude replies through its native callback without this step. Optional `setup connect --harness claude` enables unified agent CLI tools and can start a model turn under existing Bash permissions. Omitting the harness connects **all configured targets**. See [connector setup](CONNECTOR_SETUP.md) for activation boundaries.
 
-To disable, remove only this MCP entry and stop the Hub started from this configuration. Credential revocation requires restarting that Hub. Retain its private state to inspect receipts; leave other servers and the default Hub untouched.
+### Automatic host registration (experimental)
 
-## Optional CLI plugin packaging
+With Doubao **already running with an explicitly enabled CDP port**, register the generated launcher without filling the form:
+
+```sh
+agenthub setup host-install --directory "$HOME/.agenthub/doubao" --doubao-cdp-port 9224
+agenthub setup host-disable --directory "$HOME/.agenthub/doubao" --doubao-cdp-port 9224
+agenthub setup host-enable --directory "$HOME/.agenthub/doubao" --doubao-cdp-port 9224
+agenthub setup host-remove --directory "$HOME/.agenthub/doubao" --doubao-cdp-port 9224
+```
+
+This uses the desktop client's internal connector API, currently gated to **2.35.15**, not a public versioned SDK. AgentHub uses the existing renderer login and observed desktop request metadata; cookies and authentication query values are neither exported nor stored. It does not open a debug port or restart Doubao. If needed, explicitly quit and start Doubao with `open -a DoubaoWork --args --remote-debugging-port=9224`, or use the separately installed [dbtrace](https://github.com/gxcsoccer/dbtrace) launcher. Choose when to restart the application yourself.
+
+The CLI persists a unique registration name before creation, records the returned ID, checks the exact launcher configuration, and reuses that entry on repeat installation. After a lost response, it recovers a matching entry by that name; if creation remains uncertain, it refuses another create and retains the private setup for investigation. Removal uses `connector/disconnect`, then verifies absence from the complete local list. A manually edited entry is left untouched. More than one result page (48 local entries), unsupported versions and missing desktop context fail closed.
+
+`installed` means registration and connection acceptance were checked. `hostLoadingVerified` and `deliveryTested` remain false until a separate actual tool/reply test. Host enable/disable changes the connector entry; `setup enable/disable` controls the Hub. These are explicit separate operations.
+
+### Manual entry
+
+In Doubao Work 2.35.15 on macOS:
+
+1. Open **插件 · 技能 · 伙伴** (`⇧⌘S`) → **添加** → **新建自定义连接器**.
+2. Choose **STDIO**, name the connector `agenthub` and set command to the absolute **`launcherPath`** returned by init, such as `/Users/you/.agenthub/doubao/agenthub-mcp`.
+3. Leave args and environment empty, then save. This custom connector is local to this computer.
+
+The legacy `mcp.json` is also available for hosts that accept a command/args configuration; preserve argument boundaries and other servers. The optional CLI plugin is not needed for this path.
+
+The loaded tools are `list_instances`, `list_sessions`, `get_session`, `get_history`, `search_history`, `send_message` and `get_message_status`. Discover an authorized target, send `messageKind: request`, then poll the same UUID. Tool descriptions provide bounded polling guidance. If pending, report the request ID for a later user-directed status check.
+
+```sh
+agenthub setup doctor --directory "$HOME/.agenthub/doubao"
+```
+
+Doctor is read-only: backend errors exit 1; otherwise exit 2 because host loading and model replies require a separate test conversation. `hostLoadingVerified: false` means this diagnostic did not establish host loading, not that the host is necessarily disconnected. It never sends a probe message.
+
+## Disable and remove
+
+```sh
+agenthub setup disable --directory "$HOME/.agenthub/doubao"
+agenthub setup enable --directory "$HOME/.agenthub/doubao"
+# Start setup serve again after enable; enable alone does not launch it.
+agenthub setup uninstall --directory "$HOME/.agenthub/doubao"
+```
+
+Disable persists a disabled flag, waits for this setup's managed Hub to exit and refuses new launcher starts. In-flight work already accepted by a harness is not interrupted. Enable permits a later explicit start. SQLite process locks prevent two managed servers and release after a crash; no process is killed by a guessed PID. A legacy daemon started outside `setup serve` must be stopped separately before disabling or uninstalling.
+
+Uninstall removes only unchanged generated files, retaining private receipt state, lifecycle metadata and unrelated files. **Host entries are a separate cleanup step:** use `setup host-remove` for an API-managed Doubao entry before uninstalling (uninstall otherwise refuses), or remove a manually created entry through Doubao's UI. Remove the matching native MCP entry if `connect` installed one. The command reports `hostCleanupRequired: true`; it does not edit other host configuration. Interrupted uninstalls can be retried, with remaining files checked before deletion. Uninstalled setups cannot be re-enabled.
+
+## Optional CLI plugin
 
 ```sh
 npm run package:doubao
 ```
 
-Requires system `zip`. Produces `.local/doubao/agenthub-plugin-0.1.0.zip` and refuses to overwrite an existing archive. Only three allowlisted files are packaged: root `plugin.json`, `com.doubao/cli.json` and the Skill. Tokens, local configuration, histories and verification reports are excluded. Plugin version 0.1.0 pins installation to `@gxcsoccer/agenthub@0.2.0`, which must be published before that installation command works. The source-based MCP path above has no such release dependency. For nondefault directories or ports, update the plugin configuration and Skill accordingly.
+System `zip` produces `.local/doubao/agenthub-plugin-0.1.0.zip`, refusing an existing archive. It contains only `plugin.json`, `com.doubao/cli.json` and a Skill; no credentials or reports. Plugin version 0.1.0 pins `@gxcsoccer/agenthub@0.2.0`, now published on npm. Nondefault setup paths or ports require corresponding plugin/Skill edits. The CLI plugin itself has not been loaded or store-published in Doubao; the real host acceptance used the custom STDIO connector.
 
-Local package checks do not establish platform approval or global Skill-name uniqueness. The user's independent Doubao Work plugin-loading entry point still needs confirmation. No store publication, automatic import or working-conversation changes have occurred. A read-only check found `dbx 0.0.41` unauthenticated locally; its application-plugin debugging workflow is not proof of this CLI plugin's host behavior.
+## Message boundaries
 
-## Semantics
+- The caller identifies as `Doubao Work` (optional plugin: `Doubao Work via AgentHub`), with no asserted native `origin.session` or automatic `replyTo` route.
+- Requests use Claude `peer_message` or Codex `tool_output`, preserving external origin. Only `replied` with actual `reply.text` is an answer; transport acceptance is not completion.
+- The current Doubao task polls results. No background callback or proactive wake-up is implemented.
+- Preserve the original JSON and UUID. Query that ID after a lost response; do not silently replace it or retry unknown delivery.
+- The token isolates a caller and its target grants, **not individual Doubao conversations**. Tasks sharing it share caller permissions.
 
-- MCP origin is `Doubao Work`; the CLI plugin uses `Doubao Work via AgentHub`, with no native `origin.session` or `replyTo` route. Model-supplied conversation IDs are not identity evidence.
-- Requests use `messageKind: request`, Claude `peer_message` or Codex `tool_output`, never `user_input`.
-- The current task polls `get_message_status` (CLI: `status`); there is no automatic wake-up or background callback promise.
-- Only `replied` with `reply.text` is a response. Accepted, received, held and transport-written are delivery evidence. Unknown delivery is not automatically retried.
-- Preserve the original JSON and UUID; after a lost response, query the same ID before any owner-directed retry.
-- Credentials isolate callers and target grants, not individual Doubao conversations. Tasks sharing one token share its caller permissions.
-
-## Verification
+## Verification and reproduction
 
 ```sh
-npm run build
-node --test --test-timeout=15000 test/doubao-plugin.test.mjs
+npm run check
+npm run test:package
 node scripts/smoke-connector-codex.mjs --run --doubao-mcp
-# Optional CLI plugin path
+# Optional CLI workflow
 node scripts/smoke-connector-codex.mjs --run --doubao-cli
+# Explicit host-assisted acceptance, with up to 15 minutes to operate Doubao
+node scripts/smoke-connector-codex.mjs --run --doubao-host
+# Real host API lifecycle, no model messages or app restart
+node scripts/smoke-doubao-host-api.mjs --run --cdp-port 9224
 ```
 
-Automated checks cover private configuration, separate credentials, paths/ports, no overwrite, invalid/wildcard rejection, ZIP contents and actual CLI / stdio MCP → HTTP → fixture-backend workflows with reply correlation, deduplication and access denial. The generated MCP configuration remains scoped even with an inherited owner token.
+Live runners create only their own App Server, Claude PTY and temporary directories, incur model usage, and clean owned sessions and credentials. MCP mode tests real replies, duplicates and receipt retrieval after an MCP reconnect. These modes alone do not operate Doubao.
 
-The explicit live runner creates only its own App Server, Claude PTY and temporary workspace. After the connector checks, `--doubao-mcp` or `--doubao-cli` exercises the selected workflow with a scoped caller against both real coding backends, then cleans up its sessions and credentials. MCP mode uses generated launch arguments and checks receipt lookup, deduplication and target denial after an MCP process reconnect. It incurs model usage. Private reports remain in ignored `.local/verification/doubao-mcp-backends-live.json` and `doubao-cli-backends-live.json`. **It does not start Doubao or verify host loading, tool selection or permission UI.** See [verification](VERIFICATION.md) for observed results.
+Host mode first completes those backend checks, then writes ignored `.local/verification/doubao-host-pending.json` with a temporary `hostLauncherPath`, two exact request envelopes and `observedFile`. Add that launcher as a temporary Doubao STDIO connector in a dedicated test conversation. Ask Doubao to send the exact requests and retrieve replies. Only **after observing both replies in the UI**, write `observedFile` with `{ "host": "Doubao Work", "hostVersion": "…", "repliesVisible": true, "messageIds": ["…", "…"], "evidence": "private screenshot path" }`. The runner independently matches persisted replies to the fixed requests before recording host checks. Remove the temporary host connector afterward; the fixture cannot remove it for you. A timeout is failure, not acceptance.
 
-## Later: wake Doubao from other agents
+A separate five-check production CLI run verified creation/readback, idempotent registration, enabled-state readback and removal while retaining every prior local connector. Its report is `doubao-host-api-live.json`. The observed 17-check run covers 15 backend checks plus two visible Doubao replies. Busy user interleaving, actual host disconnect/recovery, native identity and other host platforms remain unverified. See [verification](VERIFICATION.md); private reports and screenshots stay excluded from publication.
 
-The official [CLI connector](https://open.doubao.com/document/plugin-docs-center/build/mcp-server-development/plugin-development-spec/cli-connector) runs on the PC. Published [MCP configuration](https://open.doubao.com/document/plugin-docs-center/build/mcp-server-development/plugin-development-spec/mcp-server-development) requires remote HTTPS. The user's earlier successful local stdio integration is a separate host-loading path to reproduce.
+## Later: proactive wake-up
 
-[MCP Events](https://open.doubao.com/document/plugin-docs-center/build/mcp-server-development/plugin-development-spec/mcp-events) invokes user-confirmed saved tasks and requires remote Streamable HTTP, durable subscriptions, signed public HTTPS callbacks, callback verification and authorization. A 2xx response confirms event receipt, not task completion. A future relay needs an explicitly authorized outbound connection from the local Hub and separate application receipts; cloud services cannot assume access to local sockets or the office network.
+The official [CLI connector](https://open.doubao.com/document/plugin-docs-center/build/mcp-server-development/plugin-development-spec/cli-connector) runs locally. Published [MCP configuration](https://open.doubao.com/document/plugin-docs-center/build/mcp-server-development/plugin-development-spec/mcp-server-development) describes remote HTTPS publication; the confirmed custom STDIO entry is a separate local route.
 
-[Agent OpenAPI](https://open.doubao.com/document/doubao-developer-guide/openapi-call-flow) needs a developer application, scopes and a user access token. Application-created sessions are not arbitrary existing Doubao sessions. These paths remain unimplemented.
+[MCP Events](https://open.doubao.com/document/plugin-docs-center/build/mcp-server-development/plugin-development-spec/mcp-events) requires saved tasks, remote Streamable HTTP, durable subscriptions and signed public HTTPS callbacks. [Agent OpenAPI](https://open.doubao.com/document/doubao-developer-guide/openapi-call-flow) needs a developer application, scopes and user access token. A future relay needs explicit authorization and separate completion receipts; neither route grants access to arbitrary existing Doubao conversations. These adapters remain unimplemented.

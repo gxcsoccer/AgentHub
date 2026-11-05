@@ -120,7 +120,7 @@ env -u AGENTHUB_TOKEN agenthub mcp --origin-name 'Doubao Work' \
 
 This stdio facade uses the official MCP TypeScript SDK and exposes seven tools: `list_instances`, `list_sessions`, `get_session`, `get_history`, `search_history`, `send_message`, `get_message_status`. It connects to the same local daemon. Approval and lifecycle mutation tools are not exposed to agents.
 
-[MCP configuration template](examples/mcp.json) and [Doubao instructions](docs/DOUBAO.md) are provided. The development branch generates plugin-free local MCP configuration with absolute paths and scoped caller credentials, runnable directly from a source build. The CLI plugin and ZIP packaging under `plugins/doubao` are optional. Loading and execution inside Doubao itself are **not yet verified**. Native Doubao identity, unsolicited wake-up, OpenAPI and MCP Events remain unimplemented.
+[Doubao setup](docs/DOUBAO.md) provides target selection, private configuration, managed Hub lifecycle and an optional local CLI plugin. The development branch adds `agenthub setup` and explicit CDP-based host registration for Doubao 2.35.15. Real Doubao STDIO requests returned visible Claude/Codex replies; automatic host creation/removal passed a separate five-check run. These setup commands require the development build and are not in npm 0.2.0. Native Doubao identity and proactive wake-up remain unimplemented.
 
 ## Verification and limits
 

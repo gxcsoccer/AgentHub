@@ -1,14 +1,18 @@
 # 验证说明
 
-## 豆包本地 MCP / CLI 接入（2026-11-05，开发分支）
+## 豆包宿主与统一 setup（2026-11-05，开发分支）
 
-`npm run check` 通过 220 项测试（核心 151、保留 Bridge 41、脚本 28，含豆包测试 5 项），覆盖率为行 96.96%、分支 88.66%、函数 94.93%。新增检查实际启动生成配置中的 stdio MCP，验证带空格的路径、可配置端口、继承 owner token 时仍受 caller 授权限制，以及请求/回复、去重和越权拒绝。插件 ZIP 仍仅含 3 个白名单文件，不包含私人凭据。
+`npm run check` 通过 **235 项测试**（核心 166、保留 Bridge 41、脚本 28）；覆盖率为**行 96.56% / 分支 87.34% / 函数 94.08%**。安装包验证也执行了安装后的 setup CLI。新增进程测试覆盖生成的 MCP 启动器、停用/重启、自有进程 SIGKILL 恢复、拒绝控制旧路径启动的守护进程、私有文件校验以及保留用户修改。宿主 API 测试覆盖唯一登记、创建响应丢失后的找回去重、不确定结果保留和移除后置条件。
 
-本次 `--run --doubao-mcp` 隔离验收通过 **15 项检查**：原有连接器 8 项，加上真实 stdio MCP 发现、Claude/Codex 回复、重复请求复用、owner 操作拒绝，以及 MCP 进程重连后的回执查询和目标越权拒绝。此前 `--run --doubao-cli` 的 13 项检查也已通过；本次新增的是 MCP 路径。两次均仅使用自有测试会话，进程和临时凭据已清理。环境为 macOS Claude 2.1.318 / Codex 0.166.0。私有报告：`.local/verification/doubao-mcp-backends-live.json`、`doubao-cli-backends-live.json`。
+macOS **豆包工作 2.35.15** 的真实宿主验收通过 **17 项检查**：15 项隔离后端/MCP 检查，加上豆包发送的两条固定请求及在测试对话中实际显示的 Claude/Codex 匹配回复。宿主也显示了重复请求结果；后端去重另有存储断言。加载入口为 **插件 · 技能 · 伙伴 → 添加 → 新建自定义连接器 → STDIO**。临时连接器已通过界面删除；自有 Claude/Codex 进程、测试 thread 和临时凭据已清理。原生版本为 Claude **2.1.318**、Codex **0.166.0**。私有证据：`.local/verification/doubao-host-live.json` 及忽略的界面截图。
 
-**这些结果不包含豆包宿主加载、模型工具选择、busy 场景下的宿主交互或主动唤醒。** 本机豆包工作 2.35.15 的设置和插件入口已只读检查，尚未确认本地 stdio MCP 配置入口，未导入配置或改变工作会话。宿主端到端验收仍待完成。
+生产 `setup host-*` CLI 另通过 **5 项真实 API 检查**：创建并准确读回启动器；重复安装复用 ID；停用/启用读回；移除后保留全部原有本地连接器 ID；卸载生成配置。私有报告：`.local/verification/doubao-host-api-live.json`。该实验参考了 [dbtrace 早期连接器研究](https://github.com/gxcsoccer/dbtrace/blob/main/docs/research/doubao/mcp-connector.md)。当前版本的列表请求需要桌面设备上下文，移除实际使用 **`connector/disconnect`**；旧通用 delete 路由曾返回成功却未移除此条目，因此实现不使用它。实现不导出或保存 Cookie、鉴权查询参数。
+
+两类验收范围独立：API 生命周期验证不代表模型工具调用，登记结果仍返回 `hostLoadingVerified: false`。忙碌期间用户插话、实际宿主断线恢复、主动唤醒、豆包原生对话身份和其他平台仍未验证或未实现。生成文件卸载不包含原生 Claude/Codex MCP 配置的自动清理。此前 CLI 单独通过 13 项、直接 MCP 单独通过 15 项，均不能独自作为宿主验收。复现见[接入说明](DOUBAO.zh-CN.md)。
 
 ## 0.2.0 发布验证（2026-11-05）
+
+此前核验的 0.2.0 原始 tarball 已发布到 npm，注册表 integrity 一致，重新安装后 CLI 帮助验证通过。[GitHub Release](https://github.com/gxcsoccer/AgentHub/releases/tag/v0.2.0) 已公开。当前开发分支的 setup/豆包改动不属于 0.2.0。
 
 `npm run check` 通过 215 项测试（统一层 151、保留的 Codex Bridge 41、验收脚本安全测试 23）；行/分支/函数覆盖率为 96.99% / 88.83% / 94.93%。安装包验证涵盖 5 个导出、两个 CLI、版本信息、HTTP、SQLite 和空事件游标恢复。0.2.0 的 Codex MCP / Claude CLI 隔离真实验收通过 8 项检查，包括双向请求/回复/结果、已加载会话发现和清理。原生范围仍为 macOS Codex 0.166.0 / Claude 2.1.318，未使用工作会话。私有报告位于忽略的 `.local/verification/release-0.2.0-*`。
 

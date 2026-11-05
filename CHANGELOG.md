@@ -3,7 +3,8 @@
 ## Unreleased
 
 - Add plugin-free local MCP setup with absolute launch paths, scoped caller credentials and inherited-owner-token removal. A local Doubao CLI plugin and allowlisted ZIP packaging remain optional; bilingual guides cover both paths.
-- Add CLI/stdio MCP/HTTP workflow tests and opt-in isolated Claude/Codex backend acceptance, including MCP reconnect, deduplication and access denial. Doubao host loading, native identity and unsolicited wake-up remain unverified or unimplemented; no store publication is performed.
+- Add unified setup target discovery, private generation, managed serve/connect/doctor/disable/enable/uninstall, plus explicit experimental Doubao 2.35.15 CDP registration, enable/disable and removal with ownership checks and uncertain-create recovery.
+- Verify real Doubao STDIO requests and visible replies from isolated Claude/Codex sessions, and a separate five-check host API lifecycle. Busy host interleaving/disconnect remain unverified; native identity and proactive wake-up remain unimplemented. No store publication is performed.
 
 ## 0.2.0 — 2026-11-05
 

@@ -25,32 +25,38 @@ import {
   codexModelTurn,
 } from './live-processes.mjs';
 if (!process.argv.includes('--run')) {
-  console.log('No live actions. Add --run for isolated Codex/Claude connector acceptance.');
+  console.log(
+    'No live actions. Add --run for isolated Codex/Claude connector acceptance; --doubao-host also waits for independent Doubao UI observation.',
+  );
   process.exit(0);
 }
 const doubaoCli = process.argv.includes('--doubao-cli');
-const doubaoMcp = process.argv.includes('--doubao-mcp');
+const doubaoHost = process.argv.includes('--doubao-host');
+const doubaoMcp = process.argv.includes('--doubao-mcp') || doubaoHost;
 const doubao = doubaoCli || doubaoMcp;
 const claudeCli = process.argv.includes('--claude-cli') || doubao;
 const root = await mkdtemp('/tmp/ah-life-'),
   work = join(root, 'work'),
   cli = resolve('dist/src/cli.js'),
   reportPath = resolve(
-    doubaoMcp
-      ? '.local/verification/doubao-mcp-backends-live.json'
-      : doubaoCli
-        ? '.local/verification/doubao-cli-backends-live.json'
-        : claudeCli
-          ? '.local/verification/connector-codex-claude-cli-live.json'
-          : '.local/verification/connector-codex-live.json',
+    doubaoHost
+      ? '.local/verification/doubao-host-live.json'
+      : doubaoMcp
+        ? '.local/verification/doubao-mcp-backends-live.json'
+        : doubaoCli
+          ? '.local/verification/doubao-cli-backends-live.json'
+          : claudeCli
+            ? '.local/verification/connector-codex-claude-cli-live.json'
+            : '.local/verification/connector-codex-live.json',
   );
 await mkdir(work);
 const report = {
   startedAt: new Date().toISOString(),
   checks: [],
   cleanup: [],
-  scope:
-    'Owned independent App Server and fresh Claude PTY only; no native dynamic reply tool or resume. --doubao-cli / --doubao-mcp test the external CLI / stdio MCP workflow, not the Doubao host runtime.',
+  scope: doubaoHost
+    ? 'Owned independent App Server and fresh Claude PTY, plus independent Doubao UI request/reply observation; no busy/disconnect/user-interleaving host claim.'
+    : 'Owned independent App Server and fresh Claude PTY only; no native dynamic reply tool or resume. --doubao-cli / --doubao-mcp test the external CLI / stdio MCP workflow, not the Doubao host runtime.',
 };
 const owner = randomUUID() + randomUUID(),
   codexToken = randomUUID() + randomUUID(),
@@ -574,6 +580,74 @@ try {
       );
       assert.equal(store.load().length, count);
       check('doubao_mcp_reconnect_preserves_reply_dedup_and_target_denial');
+    }
+    if (doubaoHost) {
+      await mcpClient.close();
+      mcpClient = undefined;
+      const requests = [
+        { harness: 'claude', instance: 'local', sessionId: sid },
+        { harness: 'codex', instance: 'local', sessionId: thread.id },
+      ].map((to) => ({
+        messageId: randomUUID(),
+        messageKind: 'request',
+        to,
+        delivery: to.harness === 'claude' ? 'peer_message' : 'tool_output',
+        text: 'DOUBAO_HOST_' + to.harness.toUpperCase() + '_' + randomUUID(),
+        expiresAt: new Date(Date.now() + 900000).toISOString(),
+      }));
+      const observedFile = join(root, 'host-observed.json');
+      const hostLauncherPath = join(await realpath(root), 'host-mcp');
+      const nativeConfig = JSON.parse(await readFile(join(root, 'direct-mcp', 'mcp.json'), 'utf8'))
+        .mcpServers.agenthub;
+      await writeFile(
+        hostLauncherPath,
+        '#!/bin/sh\nexec ' + [nativeConfig.command, ...nativeConfig.args].map(q).join(' ') + '\n',
+        { flag: 'wx', mode: 0o700 },
+      );
+      const observation = {
+        hostLauncherPath,
+        mcpConfigPath: join(await realpath(root), 'direct-mcp', 'mcp.json'),
+        requests,
+        observedFile,
+        note: 'Only independent Doubao UI observation may complete this fixture. Times out after 15 minutes.',
+      };
+      await mkdir(resolve('.local/verification'), { recursive: true });
+      await writeFile(
+        resolve('.local/verification/doubao-host-pending.json'),
+        JSON.stringify(observation, null, 2),
+        { mode: 0o600 },
+      );
+      console.log(
+        JSON.stringify({
+          hostPending: true,
+          observation: '.local/verification/doubao-host-pending.json',
+        }),
+      );
+      await until(
+        async () => {
+          const proof = await readFile(observedFile, 'utf8')
+            .then(JSON.parse)
+            .catch(() => undefined);
+          if (!proof) return false;
+          assert.equal(proof.host, 'Doubao Work');
+          assert.equal(proof.repliesVisible, true);
+          assert.deepEqual(
+            proof.messageIds,
+            requests.map((r) => r.messageId),
+          );
+          for (const input of requests) {
+            const stored = store.load().find((r) => r.envelope.messageId === input.messageId);
+            assert.equal(stored?.envelope.text, input.text);
+            assert.equal(stored?.envelope.origin.session, undefined);
+            assert.equal(stored?.receipt.reply?.text, 'ANSWER_TEST:' + input.text);
+            check('doubao_host_request_and_visible_reply_' + input.to.harness);
+          }
+          report.hostObservation = proof;
+          return true;
+        },
+        'independent Doubao host UI observation',
+        900000,
+      );
     }
   }
   report.outcome = 'passed';

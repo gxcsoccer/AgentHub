@@ -1,14 +1,31 @@
 # 豆包工作接入
 
-优先使用 **本地 stdio MCP**：生成配置后，支持该入口的宿主可直接调用本机 Hub，向授权的 Claude/Codex 会话发送请求并查询回复，无需安装 AgentHub 插件。当前开发分支提供配置生成器和七个 MCP 工具；`plugins/doubao` 的本地 CLI + Skill 是可选封装。**豆包客户端的配置加载和实际工具调用仍待宿主验收**，不能将通用 MCP 测试视为豆包已接入。
+通过 **本地 stdio MCP**，豆包可以向授权的 Claude/Codex 会话发起请求并取回回复，无需安装 AgentHub 插件。macOS 上的豆包工作 **2.35.15** 已在独立测试对话中加载七个工具，并显示两个 harness 的真实回复。验证记录区分宿主观察与后端自动测试。
 
-本版没有把豆包伪装成原生 harness session。其他 Agent 主动唤醒豆包、任意已有豆包会话的发现/历史、Agent OpenAPI 与 MCP Events adapter 尚未实现。CLI/HTTP 测试通过不等于豆包已加载插件。
+当前开发分支新增统一 `agenthub setup` 命令。已发布的 **0.2.0** 提供底层 CLI/MCP API，**尚不包含这些 setup 命令**。豆包原生对话身份、任意已有会话发现/历史、主动唤醒仍属后续范围。
 
-## 准备配置
+## 构建与选择目标
 
-需要 Node.js 22.13+、本开发分支源码，以及已运行的测试用 Claude/Codex。先在仓库执行 `npm ci && npm run build`；此流程直接使用编译后的本地 CLI，不依赖尚未发布的 npm 版本。macOS 是 Claude/Codex 真实验收平台；Linux 的豆包入口仍待验证，Windows 继续 pending。生成器只创建独立配置。
+需要 Node.js 22.13+ 和本分支源码。新版本发布前，在仓库中用临时 shell 函数运行源码 CLI：
 
-1. 用现有只读发现能力选择明确的测试会话，创建 `targets.json`：
+```sh
+npm ci
+npm run build
+AGENTHUB_CLI="$PWD/dist/src/cli.js"
+agenthub() { node "$AGENTHUB_CLI" "$@"; }
+agenthub setup targets --harness claude
+agenthub setup targets --harness codex
+```
+
+发现操作只读：Codex 列出已加载的根会话，Claude 列出原生活跃会话；返回续页游标时使用 `--cursor`。从结果中选择明确 UUID，初始化不会自动选择或联系工作会话。
+
+只授权一个目标：
+
+```sh
+agenthub setup init --harness claude --session-id CLAUDE_TEST_UUID
+```
+
+授权多个目标时，创建 `targets.json`：
 
 ```json
 [
@@ -17,85 +34,116 @@
 ]
 ```
 
-只保留实际需要的目标；不能用 `*`、工作会话名称猜测或外来 harness。生成器只接受本机 `local` 实例和原生 UUID。
-
-2. 生成专用目录（父目录必须已经存在）：
-
 ```sh
-mkdir -p "$HOME/.agenthub"
-node scripts/setup-doubao.mjs --targets /ABS/targets.json
+agenthub setup init --targets /ABS/targets.json
 ```
 
-默认新建 `$HOME/.agenthub/doubao`，目录 `0700`、文件 `0600`。已有目录会报错，不覆盖凭据。内容包括 owner/caller 两套随机 token、只对目标授予 `read/send` 的 `access.json`、`hub.json`、两端连接器 profile、独立登记凭据和 **`mcp.json`**。输出包含 `mcpConfigPath` 与 `startArgv`，不包含 token。
+只保留实际需要授权的目标。生成器仅接受本机 Claude/Codex UUID，新建 `$HOME/.agenthub/doubao`，权限 0700；已有目录会报错，不覆盖凭据。`--directory /ABS/NEW_DIRECTORY` 和 `--port 3214` 可自定义目录与端口；自定义父目录需已存在且为规范路径。配置/凭据权限为 0600，生成的 `agenthub-mcp` 启动器为 0700。
 
-`--directory /ABS/NEW_DIRECTORY` 和 `--port 3214` 可用于隔离测试。生成的 MCP 与连接器配置自动使用对应目录和端口；`--cli /ABS/dist/src/cli.js` 可指定另一份编译后的 CLI。MCP 启动使用 Node 与 CLI 的绝对路径，带空格的目录作为独立参数传递。生成器不合并现有 access 文件，不启用通配授权。停止 Hub 后，由所有者手工修改授权，再重启使其生效；这不是权限热更新。
+文件包括独立 owner/caller/enrollment token、针对明确目标的 read/send 授权、Hub 与连接器 profile、setup 清单、`mcp.json` 和启动器。输出只有路径与参数数组，不包含密钥。MCP 使用 Node/CLI 绝对路径和 caller 凭据，并清除继承的 `AGENTHUB_TOKEN`。需要保留该安装路径；变更目标或安装位置时，停用旧配置并生成新目录。生命周期命令会拒绝被手工修改的生成文件。
 
-3. 审阅后运行独立 Hub（默认端口 3214）：
+## 启动、连接并在豆包加载
 
-```sh
-env -u AGENTHUB_TOKEN node dist/src/cli.js serve --port 3214 \
-  --config "$HOME/.agenthub/doubao/hub.json" \
-  --token-file "$HOME/.agenthub/doubao/owner.token" \
-  --access-file "$HOME/.agenthub/doubao/access.json" \
-  --connector-file "$HOME/.agenthub/doubao/connectors.json" \
-  --state-file "$HOME/.agenthub/doubao/state.sqlite"
-```
-
-端口占用时停止并核查，不自动终止已有服务。MCP 与可选插件只使用 `caller.token`。生成的 MCP 命令通过 `/usr/bin/env -u AGENTHUB_TOKEN` 清除继承的 owner token，再指定 caller 文件；配置里不嵌入密钥。
-
-4. 所有者按需连接明确目标以准备回复工具：
+在独立终端中用同一份源码 CLI 启动受管理的 Hub：
 
 ```sh
-env -u AGENTHUB_TOKEN node dist/src/cli.js connect --harness codex --session-id CODEX_TEST_UUID \
-  --connector-profile "$HOME/.agenthub/doubao/codex-client.json" \
-  --url http://127.0.0.1:3214 --token-file "$HOME/.agenthub/doubao/owner.token"
+agenthub setup serve --directory "$HOME/.agenthub/doubao"
 ```
 
-Codex 使用独立 MCP 名 `agenthub_doubao`，reload 作用于整个实例；配置冲突时拒绝覆盖。Claude 原生回调可直接返回回复；需要统一 CLI 工具时，所有者可用同样命令指定 `--harness claude`、`claude-client.json` 和 `--wait-ms 60000`。Claude CLI 激活可能启动模型轮次，遵守现有 Bash 权限。以上都是所有者操作，插件不替用户执行 connect 或审批。详见[连接器说明](CONNECTOR_SETUP.zh-CN.md)。
+该命令保持前台运行。端口占用会报错。初始化本身不启动服务、不发送消息。在另一个终端中为已选择的 Codex 准备回复工具：
 
-5. 在宿主的本地 stdio MCP 配置入口添加生成的 `mcp.json` 中的 `agenthub` 条目，保留其他服务器配置。若界面分别要求 command/args，逐项使用生成值；不要把参数拼成 shell 命令。当前尚未确认豆包工作 2.35.15 的此入口，不能承诺导入成功。通用格式见[模板](../examples/mcp.json)。
+```sh
+agenthub setup connect --directory "$HOME/.agenthub/doubao" --harness codex
+```
 
-加载后应能列出七个工具：`list_instances`、`list_sessions`、`get_session`、`get_history`、`search_history`、`send_message`、`get_message_status`。先发现授权目标，再发送 `messageKind: request`，用返回的 UUID 查询结果。工具说明包含回复与有限轮询指引，无需另装 Skill。没有答案时报告请求 ID，后续由用户主动查询。
+生成的 MCP 名为 `agenthub_doubao`；原生 reload 作用于整个 Codex 实例，冲突配置不会覆盖。Claude 原生回调回复不需要这一步；可选 `setup connect --harness claude` 用于启用统一 Agent CLI 工具，会在现有 Bash 权限下启动模型轮次。不指定 harness 时会连接**全部已配置目标**。激活边界见[连接器说明](CONNECTOR_SETUP.zh-CN.md)。
 
-停用时移除宿主中的这一个 MCP 条目，并停止此配置启动的 Hub；不删除其他 MCP 服务或默认 Hub 的状态。撤销 token 后需要重启对应 Hub。保留私有状态文件供查询已有回执。
+### 自动登记宿主（实验性）
 
-## 可选：CLI 插件打包与加载
+豆包**已显式开启 CDP 调试端口**时，可直接登记生成的启动器，省去手工填表：
+
+```sh
+agenthub setup host-install --directory "$HOME/.agenthub/doubao" --doubao-cdp-port 9224
+agenthub setup host-disable --directory "$HOME/.agenthub/doubao" --doubao-cdp-port 9224
+agenthub setup host-enable --directory "$HOME/.agenthub/doubao" --doubao-cdp-port 9224
+agenthub setup host-remove --directory "$HOME/.agenthub/doubao" --doubao-cdp-port 9224
+```
+
+这里使用桌面客户端内部连接器 API，当前仅允许已验证的 **2.35.15**，不属于公开版本化 SDK。AgentHub 复用当前 renderer 的登录态和实际桌面请求元数据，不导出或保存 Cookie、鉴权查询参数。CLI 不开启调试端口，也不重启豆包。如需开启，请自行选择时机退出后执行 `open -a DoubaoWork --args --remote-debugging-port=9224`，或使用另行安装的 [dbtrace](https://github.com/gxcsoccer/dbtrace) 启动器。
+
+创建前持久化唯一名称，收到结果后记录 ID，并核对启动器配置；重复安装复用该条目。创建响应丢失时按唯一名称找回一致条目；结果仍不确定时拒绝再次创建，保留私有配置供核查。移除调用 `connector/disconnect`，并以完整本地列表中不存在该 ID 为准。用户编辑过的条目不会修改。超过一页（48 个本地条目）、版本未验证或桌面上下文缺失时停止操作。
+
+`installed` 仅表示登记和连接接收已核验；实际工具与回复测试前，`hostLoadingVerified`、`deliveryTested` 仍为 false。`host-enable/disable` 修改宿主条目，`setup enable/disable` 控制 Hub，两者独立且显式。
+
+### 手工入口
+
+macOS 豆包工作 2.35.15 的界面入口：
+
+1. 打开 **插件 · 技能 · 伙伴**（`⇧⌘S`）→ **添加** → **新建自定义连接器**。
+2. 选择 **STDIO**，连接器命名 `agenthub`；命令填入 init 返回的绝对 **`launcherPath`**，例如 `/Users/you/.agenthub/doubao/agenthub-mcp`。
+3. 参数与环境变量留空，保存。该自定义连接器仅在此电脑生效。
+
+需要 command/args 配置的宿主也可使用兼容的 `mcp.json`；保持参数边界与其他服务器配置。本路径无需可选的 CLI 插件。
+
+加载后的七个工具是 `list_instances`、`list_sessions`、`get_session`、`get_history`、`search_history`、`send_message`、`get_message_status`。先发现授权目标，再发送 `messageKind: request`，然后查询同一 UUID。工具说明包含有限轮询指引；尚未完成时报告请求 ID，供用户稍后查询。
+
+```sh
+agenthub setup doctor --directory "$HOME/.agenthub/doubao"
+```
+
+Doctor 只读：后端错误退出 1；其余情况退出 2，因为宿主加载和真实模型回复仍需独立测试。`hostLoadingVerified: false` 表示本次诊断没有建立宿主加载证据，不代表宿主一定未连接。诊断不会发送探测消息。
+
+## 停用与移除
+
+```sh
+agenthub setup disable --directory "$HOME/.agenthub/doubao"
+agenthub setup enable --directory "$HOME/.agenthub/doubao"
+# enable 后需再次运行 setup serve；enable 本身不启动服务。
+agenthub setup uninstall --directory "$HOME/.agenthub/doubao"
+```
+
+停用会持久化禁用标志，等待本配置的受管理 Hub 退出，并拒绝新的启动器连接；harness 已经接受的在途工作不会被中断。启用只允许后续显式启动。SQLite 进程锁防止双实例，并在进程崩溃后释放；命令不会按猜测的 PID 杀进程。通过旧版 `serve` 路径独立启动的 Hub，需要先另行停止。
+
+卸载只删除未被修改的生成文件，保留私有回执状态、生命周期元数据和其他文件。**宿主条目需另行清理**：API 登记的豆包条目必须先执行 `setup host-remove`，否则 uninstall 会拒绝；手工添加的条目在豆包界面删除。如果 `connect` 安装了原生 MCP，也应删除对应条目。命令明确返回 `hostCleanupRequired: true`，不编辑其他宿主配置。中断后的卸载可重试，删除前会校验所有剩余文件。已卸载配置不能重新启用。
+
+## 可选 CLI 插件
 
 ```sh
 npm run package:doubao
 ```
 
-生成 `.local/doubao/agenthub-plugin-0.1.0.zip`，已存在则拒绝覆盖。需要系统 `zip` 命令。ZIP 根目录直接包含 `plugin.json`、`com.doubao/cli.json` 和一份 Skill；仅打包固定白名单，不包含私人配置、token、原生历史或验收报告。插件版本 0.1.0，包内安装命令固定使用 `@gxcsoccer/agenthub@0.2.0`，需该版本实际发布后才能使用此安装命令。此发布依赖不影响上面的源码 MCP 路径；非默认目录/端口需同步调整插件配置与 Skill。
+系统 `zip` 生成 `.local/doubao/agenthub-plugin-0.1.0.zip`，已有文件则拒绝覆盖。仅包含 `plugin.json`、`com.doubao/cli.json` 和 Skill，不含凭据或报告。插件版本 0.1.0 固定使用已发布的 `@gxcsoccer/agenthub@0.2.0`。非默认目录/端口需调整插件与 Skill。该 CLI 插件尚未在豆包宿主加载或发布商店；真实宿主验收使用自定义 STDIO 连接器。
 
-本地检查不代表平台上传校验通过，也不验证 Skill 名称在全平台唯一。豆包工作中的独立插件加载入口仍待用户确认；尚未自动导入、发布商店或修改实际工作会话。官方 `dbx 0.0.41` 已只读检查，本机未登录；它的应用插件调试流程也不能直接代替本 CLI 插件宿主验收。
+## 消息边界
 
-## 消息与凭据语义
+- 调用方标识为 `Doubao Work`（可选插件为 `Doubao Work via AgentHub`），不声明原生 `origin.session` 或自动 `replyTo` 路由。
+- 请求使用 Claude `peer_message` 或 Codex `tool_output`，保留外部来源。只有 `replied` 和真实 `reply.text` 才是答案，传输接收不是业务完成。
+- 当前豆包任务主动查询结果；尚无后台回调或主动唤醒。
+- 保留原始 JSON 与 UUID。丢失响应后先查询原 ID，不静默换 ID 或重发投递情况未知的请求。
+- token 隔离调用方及授权目标，**不隔离各个豆包对话**；共享 token 的任务具有相同调用方权限。
 
-- MCP 来源名为 `Doubao Work`，CLI 插件为 `Doubao Work via AgentHub`；两者均为外部调用方；不填 `origin.session`、`replyTo`，不声称知道豆包原生会话 ID。
-- `messageKind: request` 明确请求一条回复。Claude 使用 `peer_message`，Codex 使用 `tool_output`；不会转换成 `user_input`。
-- 回复保存在同一请求回执中，当前任务主动调用 `get_message_status`（CLI 为 `status`）取回。没有后台推送或自动唤醒承诺。
-- `accepted`、`received`、`held`、`transport_written` 都不是业务答案；只有 `replied` 和真实 `reply.text` 表示取得回复。`unknown` 不自动重发。
-- 相同逻辑请求保留 JSON 和 UUID。丢失 HTTP 回执后先查原 ID；不更换 ID 隐式重试。
-- 专用 token 隔离的是调用方和授权目标，**不是每个豆包对话**；共用此 token 的任务具有相同的调用方权限。没有原生身份前，不把模型自报的 conversation ID 当作权限证据。
-
-## 验证
+## 验证与复现
 
 ```sh
-npm run build
-node --test --test-timeout=15000 test/doubao-plugin.test.mjs
+npm run check
+npm run test:package
 node scripts/smoke-connector-codex.mjs --run --doubao-mcp
-# 可选 CLI 插件路径
+# 可选 CLI 工作流
 node scripts/smoke-connector-codex.mjs --run --doubao-cli
+# 需要独立操作豆包界面，最多等待 15 分钟
+node scripts/smoke-connector-codex.mjs --run --doubao-host
+# 真实宿主 API 生命周期，不发起模型消息、不重启应用
+node scripts/smoke-doubao-host-api.mjs --run --cdp-port 9224
 ```
 
-自动测试覆盖私有配置、独立凭据、目录与端口校验、不覆盖旧目录、拒绝无效/通配目标、插件 ZIP 白名单，以及实际 CLI / stdio MCP → HTTP → 测试后端的请求/回复、幂等和越权拒绝。生成的 MCP 配置在故意继承 owner token 的情况下也只能访问授权目标。
+真实测试只创建自有 App Server、Claude PTY 和临时目录，会产生模型用量，并清理自有会话和凭据。MCP 模式覆盖真实回复、重复请求和 MCP 重连后的回执查询。这些模式本身不操作豆包。
 
-显式 `--run --doubao-mcp` 或 `--run --doubao-cli` 沿用已有隔离脚本：仅创建自己的独立 App Server、Claude PTY 和临时目录，完成核心连接器检查后，再用独立受限 caller 执行所选工作流，覆盖真实 Claude/Codex 回复及重复请求。MCP 模式使用生成的启动参数，并验证 MCP 进程重连后查询回执、去重与目标越权拒绝。测试会产生模型用量，结束时归档/停止自有会话并清理凭据。报告分别位于忽略的 `.local/verification/doubao-mcp-backends-live.json` 与 `doubao-cli-backends-live.json`。**这个脚本不启动豆包，也不验证豆包的工具选择、加载或权限 UI。** 实际执行结果见[验证记录](VERIFICATION.zh-CN.md)。
+Host 模式先完成后端检查，然后写入忽略的 `.local/verification/doubao-host-pending.json`，包含临时 `hostLauncherPath`、两个固定请求和 `observedFile`。在独立豆包测试对话中添加临时 STDIO 连接器，让豆包发送原样请求并取回回复。只有**亲眼确认界面显示两条回复后**，才将 `{ "host": "Doubao Work", "hostVersion": "…", "repliesVisible": true, "messageIds": ["…", "…"], "evidence": "私有截图路径" }` 写入 `observedFile`。脚本会独立比对持久回执与固定请求，匹配后才记录宿主检查。测试后需删除临时豆包连接器，脚本不替操作者删除；超时按失败处理。
 
-## 下一阶段：主动唤醒豆包
+生产 CLI 另通过 5 项宿主 API 检查：创建/读回、重复登记复用、启停读回，以及移除后保留全部原有本地连接器；报告为 `doubao-host-api-live.json`。本次 17 项检查包括 15 项后端检查和两条豆包可见回复。忙碌期间用户插话、真实宿主断线恢复、原生身份与其他宿主平台尚未验证。详见[验证记录](VERIFICATION.zh-CN.md)；报告和截图保持私有，不随项目发布。
 
-[官方 CLI 连接器](https://open.doubao.com/document/plugin-docs-center/build/mcp-server-development/plugin-development-spec/cli-connector) 明确在 PC 本地执行。[MCP 文档](https://open.doubao.com/document/plugin-docs-center/build/mcp-server-development/plugin-development-spec/mcp-server-development) 的发布规范要求远程 HTTPS MCP；用户此前的本地 stdio 成功经验属于另一个实际加载入口，需要单独复现。
+## 后续：主动唤醒
 
-[MCP Events](https://open.doubao.com/document/plugin-docs-center/build/mcp-server-development/plugin-development-spec/mcp-events) 可以触发用户已确认的保存任务，要求远程 Streamable HTTP、持久订阅、签名公网 HTTPS 回调、回调验证与权限校验。其 2xx 只表示事件接收。后续需要显式授权的本地 Hub 出站中继和独立回执设计，不能假设云端能访问本机 socket；用户提供的资料指出 MCP Apps 不能访问办公网。
+[官方 CLI 连接器](https://open.doubao.com/document/plugin-docs-center/build/mcp-server-development/plugin-development-spec/cli-connector) 在本机运行。[发布 MCP 配置](https://open.doubao.com/document/plugin-docs-center/build/mcp-server-development/plugin-development-spec/mcp-server-development) 描述远程 HTTPS 路径；已验证的自定义 STDIO 是独立本地入口。
 
-[Agent OpenAPI](https://open.doubao.com/document/doubao-developer-guide/openapi-call-flow) 需要开发者应用、权限和 user_access_token；应用创建的会话不等同于任意已有豆包会话。以上两条是后续范围，尚未实现。
+[MCP Events](https://open.doubao.com/document/plugin-docs-center/build/mcp-server-development/plugin-development-spec/mcp-events) 需要保存任务、远程 Streamable HTTP、持久订阅和签名公网 HTTPS 回调。[Agent OpenAPI](https://open.doubao.com/document/doubao-developer-guide/openapi-call-flow) 需要开发者应用、权限和用户 token。后续中继需要明确授权及独立完成回执；两者都不代表能访问任意已有豆包对话。这些 adapter 尚未实现。

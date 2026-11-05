@@ -117,7 +117,7 @@ env -u AGENTHUB_TOKEN agenthub mcp --origin-name 'Doubao Work' \
 
 MCP 使用官方 SDK，提供会话发现、详情、历史、消息提交和状态查询、全文检索共七个工具。面向 agent 的工具不开放审批、恢复或中断操作。[配置模板](examples/mcp.json)。
 
-当前开发分支提供无需插件的本地 MCP 配置生成器：使用绝对路径、专用受限 caller 凭据，可直接运行源码构建。`plugins/doubao` CLI 插件与 ZIP 打包是可选路径。**尚未在豆包宿主完成加载与调用验收**。豆包原生身份、主动唤醒、Agent OpenAPI 和 MCP Events 尚未实现。[接入说明](docs/DOUBAO.zh-CN.md)。
+[豆包接入](docs/DOUBAO.zh-CN.md)提供目标选择、私有配置生成、Hub 生命周期和可选 CLI 插件。开发分支新增 `agenthub setup`，并支持通过显式 CDP 端口自动登记豆包 2.35.15 连接器。真实豆包 STDIO 对话已显示 Claude/Codex 回复；自动创建/移除另通过 5 项检查。这些 setup 命令需要开发分支构建，尚不在 npm 0.2.0 中。豆包原生身份与主动唤醒仍未实现。
 
 ## 验证与边界
 
