@@ -333,17 +333,15 @@ export class CodexAdapter extends EventEmitter implements Adapter {
       const name = object(layer.name);
       return name.type === 'user' && !name.profile;
     });
-    if (users.length !== 1)
-      throw new HubError(
+    const unavailable = () =>
+      new HubError(
         'configuration_unavailable',
         'One writable base user config layer is required',
         409,
       );
-    const layer = users[0]!,
-      name = object(layer.name),
-      filePath = text(name.file, 'config file', 4096),
-      expectedVersion = text(layer.version, 'config version', 1024);
-    const selected = object(layer.config),
+    if (users.length > 1) throw unavailable();
+    const layer = users[0];
+    const selected = object(layer?.config ?? {}),
       effective = object(snapshot.config);
     const entry = (value: Json) =>
       value.mcp_servers && typeof value.mcp_servers === 'object'
@@ -364,14 +362,17 @@ export class CodexAdapter extends EventEmitter implements Adapter {
         'An existing or overriding MCP entry differs; no configuration changed',
         409,
       );
-    const changed = current === undefined;
+    // An entry can already be active through an override layer such as -c.
+    // The user's file is only written when no effective configuration exists.
+    const changed = current === undefined && active === undefined;
     if (changed) {
+      if (!layer) throw unavailable();
       const write = await this.request('config/value/write', {
         keyPath: `mcp_servers.${serverName}`,
         value: config,
         mergeStrategy: 'replace',
-        filePath,
-        expectedVersion,
+        filePath: text(object(layer.name).file, 'config file', 4096),
+        expectedVersion: text(layer.version, 'config version', 1024),
       });
       if (write.status !== 'ok' || write.overriddenMetadata)
         throw new HubError(

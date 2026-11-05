@@ -402,3 +402,36 @@ test('callback recovery refuses a live or replaced endpoint and ignores expired 
   await expired.restore([{ ...m, expiresAt: new Date(0).toISOString() }], state);
   await expired.close();
 });
+
+test('an embedder version policy enables delivery while the real version stays visible', async (t) => {
+  const dir = await mkdtemp('/tmp/ah-claude-policy-');
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const inbox = join(dir, 'inbox.sock');
+  const native = createServer((socket) => socket.resume());
+  native.listen(inbox);
+  await once(native, 'listening');
+  t.after(() => new Promise<void>((resolve) => native.close(() => resolve())));
+  const id = randomUUID();
+  const adapter = (allow: boolean) =>
+    new ClaudeAdapter({
+      nativeMessaging: true,
+      version: async () => '2.1.322',
+      supportsNativeVersion: (version) => {
+        assert.equal(version, '2.1.322');
+        return allow;
+      },
+      discover: async () => [
+        { sessionId: id, pid: process.pid, status: 'idle', socketPath: inbox },
+      ],
+    });
+  const address = { harness: 'claude', instance: 'local', sessionId: id };
+  const allowed = adapter(true);
+  t.after(() => allowed.close());
+  const session = await allowed.getSession(address);
+  assert.deepEqual(session.capabilities.send, ['peer_message']);
+  assert.equal(session.metadata?.installedCliVersion, '2.1.322');
+  assert.equal(session.metadata?.nativeVersionSupported, true);
+  const refused = adapter(false);
+  t.after(() => refused.close());
+  assert.deepEqual((await refused.getSession(address)).capabilities.send, []);
+});

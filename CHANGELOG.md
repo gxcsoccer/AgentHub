@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Skip the user config write when a matching Codex MCP entry is already effective through an override layer. Conflicting overrides are still refused.
+- Add `ClaudeAdapter` `supportsNativeVersion` for embedders with their own version policy. Sessions report the installed version and `nativeVersionSupported`, and `doctor` follows that result. The default remains the validated version list.
+
 ## 0.3.0 — 2026-11-05
 
 - Add plugin-free local MCP setup with absolute launch paths, scoped caller credentials and inherited-owner-token removal. A local Doubao CLI plugin and allowlisted ZIP packaging remain optional; bilingual guides cover both paths.
