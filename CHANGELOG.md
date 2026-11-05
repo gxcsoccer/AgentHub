@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Add `ConnectorService` option `connectedPeersOnly`, off by default. Only sessions with a current binding can be listed or asked.
+- Add owner `disconnect` (library, `POST /v1/disconnect`, CLI) for one session or one connector profile, without a Hub restart. It persists until a later owner `connect`. Native MCP and hook configuration is unchanged.
+- Reclaim stale bindings and lifecycle records at capacity instead of refusing with 429. Connector state moves to version 4, so roll back only from a state backup.
+
 ## 0.3.0 — 2026-11-05
 
 - Add plugin-free local MCP setup with absolute launch paths, scoped caller credentials and inherited-owner-token removal. A local Doubao CLI plugin and allowlisted ZIP packaging remain optional; bilingual guides cover both paths.

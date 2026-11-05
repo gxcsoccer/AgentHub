@@ -312,11 +312,25 @@ export const openApi = {
         responses: responses({ type: 'object' }),
       },
     },
+    '/v1/disconnect': {
+      post: {
+        operationId: 'disconnectConnector',
+        description:
+          'Owner only. Disconnects one session or one connector profile for later operations without a Hub restart, and removes its bindings, credentials and lifecycle records. Native MCP and hook configuration is not changed, and requests already accepted by a target are not cancelled. A later owner connect reverses it.',
+        requestBody: body({
+          oneOf: [
+            strictObject({ address: ref('SessionAddress') }, ['address']),
+            strictObject({ profileId: { type: 'string' } }, ['profileId']),
+          ],
+        }),
+        responses: responses({ type: 'object' }),
+      },
+    },
     '/v1/connections': {
       get: {
         operationId: 'listConnections',
         description:
-          'Owner only. Historical bindings and enabled profiles, never credentials. A binding is not a session or connector liveness signal.',
+          'Owner only. Historical bindings, owner disconnections and enabled profiles, never credentials. A binding is not a session or connector liveness signal.',
         responses: responses({ type: 'object' }),
       },
     },

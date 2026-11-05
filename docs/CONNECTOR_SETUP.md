@@ -246,3 +246,15 @@ The tested entry point is an isolated interactive macOS terminal with Claude CLI
 npm run smoke:connector:cli -- --run
 npm run smoke:connector:codex -- --run --claude-cli
 ```
+
+## Disconnect
+
+```sh
+agenthub disconnect --harness codex --session-id ID
+```
+
+`disconnect` is owner-only and takes effect for later operations without a Hub restart. Library and HTTP callers can target one session (`{ address }`) or one connector profile (`{ profileId }`), and the result reports how many bindings, credentials and lifecycle records were removed. The decision persists across restarts because a session could otherwise bind itself again on its next tool call. A later owner `connect` for that session reverses it; if that connect fails, the session stays disconnected.
+
+Native MCP and hook configuration is not changed, and requests already accepted by a target are not cancelled. A disconnected session is refused as a target with `peer_not_connected`.
+
+With the `ConnectorService` option `connectedPeersOnly`, off by default, only sessions with a binding from a current, enabled profile can be listed or asked. Bindings are still not liveness signals.

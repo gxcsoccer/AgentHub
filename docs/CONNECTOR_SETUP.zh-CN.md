@@ -245,3 +245,15 @@ agenthub agent --connector-profile /ABS/client.json reply --request REQUEST_UUID
 npm run smoke:connector:cli -- --run
 npm run smoke:connector:codex -- --run --claude-cli
 ```
+
+## 断开连接
+
+```sh
+agenthub disconnect --harness codex --session-id ID
+```
+
+`disconnect` 只有所有者能调用，之后的操作立即生效，不用重启 Hub。通过库或 HTTP 调用时，可以断开单个会话（`{ address }`）或单个连接器 profile（`{ profileId }`），结果里会列出删除了多少绑定、凭证和生命周期记录。这个决定在重启后依然有效，否则会话下一次调用工具时会重新绑定自己。所有者之后对该会话执行 `connect` 即可恢复；如果 `connect` 失败，会话保持断开。
+
+原生 MCP 和 hook 配置不会改动，目标已经接受的请求也不会取消。已断开的会话作为目标时会被拒绝，错误码是 `peer_not_connected`。
+
+`ConnectorService` 的 `connectedPeersOnly` 选项默认关闭。打开后，只有绑定来自当前已启用 profile 的会话才能被列出或询问。绑定仍然不代表会话存活。

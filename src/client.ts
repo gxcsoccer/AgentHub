@@ -116,6 +116,13 @@ export class AgentHubClient {
       { address, ...options },
     );
   }
+  disconnect(target: { address: SessionAddress } | { profileId: string }) {
+    return this.request<{
+      disconnected: true;
+      removed: { bindings: number; credentials: number; hooks: number };
+      at: string;
+    }>('POST', '/v1/disconnect', {}, target);
+  }
   connections() {
     return this.request<{ bindings: ConnectorBinding[]; liveness: string }>(
       'GET',
