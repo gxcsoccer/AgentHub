@@ -118,7 +118,7 @@ agenthub serve --config /ABS/hub.json --access-file /ABS/access.json \
 
 `to` 可以是 `{harness, instance, sessionId}` 或 `@claude/名称`、`@codex/名称`。名称只用于一次查找，重名拒绝；发送固定原生地址。目标必须支持外部消息和回复，缺监听/工具时返回未就绪，发送过程不做隐式 attach。
 
-工具返回请求 ID 和异步等待提示。发起方可做独立工作或结束本轮，结果作为关联的外部消息到达；期间用户的新要求继续按用户要求处理。写入失败不会自动重试，错误带请求 ID，所有者可用 `agenthub status --message-id UUID` 检查。模型再次调用 `ask_agent` 是新请求，不承诺跨模型重试去重。
+工具返回请求 ID 和异步等待提示。发起方可做独立工作或结束本轮，结果作为关联的外部消息到达；期间用户的新要求继续按用户要求处理。请求失败不会自动重试，错误带请求 ID，所有者可用 `agenthub status --message-id UUID` 检查。模型再次调用 `ask_agent` 是新请求，不承诺跨模型重试去重。
 
 ```sh
 agenthub connections --url http://127.0.0.1:3211 --token-file /ABS/owner.token
@@ -245,3 +245,5 @@ agenthub agent --connector-profile /ABS/client.json reply --request REQUEST_UUID
 npm run smoke:connector:cli -- --run
 npm run smoke:connector:codex -- --run --claude-cli
 ```
+
+Hub 不可用时，`reply_agent` 会用相同内容重试，最长 25 秒，之后返回包含请求 ID 的错误。Hub 把相同内容的重放当作重复处理。如果中断时间更长且 Agent 没有再次重试，回复仍可能丢失。`ask_agent` 不会自动重试。

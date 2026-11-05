@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Retry `reply_agent` for up to 25 seconds after a network failure or 5xx response, using the same text. The Hub treats a replay as a duplicate. `ask_agent` is still never retried. A longer outage returns an error with the request ID, so the reply can still be lost if it isn't retried.
+
 ## 0.3.0 — 2026-11-05
 
 - Add plugin-free local MCP setup with absolute launch paths, scoped caller credentials and inherited-owner-token removal. A local Doubao CLI plugin and allowlisted ZIP packaging remain optional; bilingual guides cover both paths.

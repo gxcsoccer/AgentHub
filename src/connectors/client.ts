@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { setTimeout as delay } from 'node:timers/promises';
 import { AgentHubClient, HubApiError } from '../client.js';
 import { HubError, object, uuid } from '../validation.js';
 import type { SessionAddress } from '../types.js';
@@ -19,6 +20,8 @@ export class ConnectorClient {
       transport?: 'cli';
       evidence?: ConnectorEvidence;
       fetch?: typeof fetch;
+      /** Total time to retry a reply after a network or server failure. */
+      replyRetryMs?: number;
     },
   ) {
     this.enrollment = new AgentHubClient({
@@ -128,7 +131,29 @@ export class ConnectorClient {
       );
     });
   }
-  reply(input: { request: string; message: string }, meta?: unknown) {
-    return this.call({ operation: 'reply', request: input.request, message: input.message }, meta);
+  /**
+   * Replies are safe to replay: the Hub accepts the identical text as a duplicate
+   * and refuses different text. `ask` is never retried. The window is short because
+   * it blocks the model's tool call, and the request deadline isn't known here.
+   */
+  async reply(input: { request: string; message: string }, meta?: unknown) {
+    const operation = { operation: 'reply', request: input.request, message: input.message };
+    const deadline = Date.now() + (this.options.replyRetryMs ?? 25000);
+    for (let wait = 250; ; wait = Math.min(wait * 2, 4000)) {
+      try {
+        return await this.call(operation, meta);
+      } catch (error) {
+        const hubUnavailable =
+          error instanceof HubApiError ? error.status >= 500 : error instanceof TypeError;
+        if (!hubUnavailable) throw error;
+        if (Date.now() + wait >= deadline)
+          throw new HubError(
+            'connector_request_failed',
+            `Reply to request ${input.request} was not confirmed: ${error instanceof Error ? error.message : String(error)}. The Hub may be restarting. Retry later with the same request ID and identical text; the Hub treats that as a duplicate.`,
+            502,
+          );
+        await delay(wait);
+      }
+    }
   }
 }

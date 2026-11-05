@@ -119,7 +119,7 @@ Discovery returns `peers` plus `gaps` identifying omitted instances (backend err
 
 Targets accept `{harness, instance, sessionId}` or `@claude/name` / `@codex/name`. Names are a one-time lookup; ambiguity fails and submission fixes the native address. Both endpoints need external delivery; missing target reply tools/listeners report unready without implicit attachment.
 
-The acknowledgement includes a request ID and asynchronous waiting guidance. Continue independent work or end the turn; a correlated external result arrives later. Intervening user requests remain separate. Failed writes are never automatically retried; errors include the request ID for owner diagnosis through `agenthub status --message-id UUID`. Another model `ask_agent` call is a new request, not a deduplicated retry.
+The acknowledgement includes a request ID and asynchronous waiting guidance. Continue independent work or end the turn; a correlated external result arrives later. Intervening user requests remain separate. Failed requests are never automatically retried; errors include the request ID for owner diagnosis through `agenthub status --message-id UUID`. Another model `ask_agent` call is a new request, not a deduplicated retry.
 
 ```sh
 agenthub connections --url http://127.0.0.1:3211 --token-file /ABS/owner.token
@@ -246,3 +246,5 @@ The tested entry point is an isolated interactive macOS terminal with Claude CLI
 npm run smoke:connector:cli -- --run
 npm run smoke:connector:codex -- --run --claude-cli
 ```
+
+If the Hub is unavailable, `reply_agent` retries for up to 25 seconds with the same text, then returns an error containing the request ID. The Hub accepts a replay of identical text as a duplicate. A reply can still be lost in a longer outage if the agent doesn't retry. `ask_agent` is never retried.
