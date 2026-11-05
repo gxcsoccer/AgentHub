@@ -577,6 +577,101 @@ test('connect restores only the profile matching its credential and undoes that 
   assert.deepEqual(await enabled(), { [first.id]: true, other: false });
 });
 
+test('a profile mcpCommand is written and compared in place of the install path', async (t) => {
+  const f = await fixture(t),
+    dir = await mkdtemp('/tmp/ah-codex-command-');
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  await writeFile(join(dir, 'token'), f.token, { mode: 0o600 });
+  const clientProfilePath = join(dir, 'client.json'),
+    address = { harness: 'codex', instance: 'local', sessionId: f.a },
+    mcpCommand = { command: '/data/meno-mcp', args: ['--stable'] };
+  await writeFile(
+    clientProfilePath,
+    JSON.stringify({
+      url: 'http://127.0.0.1:3211',
+      harness: 'codex',
+      enrollmentTokenFile: 'token',
+    }),
+    { mode: 0o600 },
+  );
+  const base = {
+    id: 'launcher',
+    callerId: 'agents',
+    harness: 'codex' as const,
+    instance: 'local',
+    enrollmentToken: f.token,
+    mcpCommand,
+  };
+  const inspect = async () => {
+    throw Error('Unused');
+  };
+  const service = new ConnectorService(f.hub, [base], { inspect });
+  let stored: { command?: string; args?: string[] } | undefined;
+  f.rpc.handlers.set('config/read', () => ({
+    config: { mcp_servers: stored ? { agenthub: stored } : {} },
+    layers: [
+      {
+        name: { type: 'user', file: '/private/config.toml' },
+        version: 'v1',
+        config: { mcp_servers: stored ? { agenthub: stored } : {} },
+      },
+    ],
+  }));
+  f.rpc.handlers.set('config/value/write', (p) => {
+    stored = p.value as typeof stored;
+    return { status: 'ok' };
+  });
+  f.rpc.handlers.set('config/mcpServer/reload', () => ({}));
+  f.rpc.handlers.set('mcpServer/tool/call', () => ({ isError: true }));
+  await service.connect({ address, clientProfilePath }, 3211);
+  assert.deepEqual(stored, mcpCommand);
+  await service.connect({ address, clientProfilePath }, 3211);
+  assert.equal(f.rpc.calls.filter((c) => c.method === 'config/value/write').length, 1);
+  const moved = new ConnectorService(
+    f.hub,
+    [{ ...base, mcpCommand: { ...mcpCommand, command: '/elsewhere/meno-mcp' } }],
+    { inspect },
+  );
+  await assert.rejects(moved.connect({ address, clientProfilePath }, 3211), /differs/);
+  assert.throws(
+    () => new ConnectorService(f.hub, [{ ...base, mcpCommand: { command: 'meno-mcp', args: [] } }]),
+    /absolute/,
+  );
+  assert.throws(
+    () => new ConnectorService(f.hub, [{ ...base, harness: 'claude' }]),
+    /only supported for Codex/,
+  );
+});
+
+test('a launcher without arguments matches an entry whose args Codex omitted', async (t) => {
+  const f = await fixture(t),
+    address = { harness: 'codex', instance: 'local', sessionId: f.a };
+  const entry = { command: '/data/meno-mcp' };
+  f.rpc.handlers.set('config/read', () => ({
+    config: { mcp_servers: { agenthub: entry } },
+    layers: [
+      {
+        name: { type: 'user', file: '/private/config.toml' },
+        version: 'v1',
+        config: { mcp_servers: { agenthub: entry } },
+      },
+    ],
+  }));
+  const installed = await f.adapter.installConnector(address, 'agenthub', {
+    command: '/data/meno-mcp',
+    args: [],
+  });
+  assert.equal(installed.changed, false);
+  await assert.rejects(
+    f.adapter.installConnector(address, 'agenthub', { command: '/other', args: [] }),
+    /differs/,
+  );
+  await assert.rejects(
+    f.adapter.installConnector(address, 'agenthub', { command: '/data/meno-mcp', args: ['x'] }),
+    /differs/,
+  );
+});
+
 test('owner connect validates profiles and requires current native identity, not historical bindings', async (t) => {
   const f = await fixture(t),
     dir = await mkdtemp('/tmp/ah-codex-onboarding-');

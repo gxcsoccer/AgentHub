@@ -25,6 +25,9 @@ export async function loadConnectorProfiles(filename: string): Promise<Connector
                 .string()
                 .regex(/^[A-Za-z0-9_-]{1,64}$/)
                 .optional(),
+              mcpCommand: z
+                .strictObject({ command: z.string(), args: z.array(z.string()) })
+                .optional(),
               instance: z.string(),
               enrollmentTokenFile: filePath,
               epoch: z.number().int().nonnegative().optional(),

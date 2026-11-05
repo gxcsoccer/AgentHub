@@ -391,7 +391,9 @@ export class CodexAdapter extends EventEmitter implements Adapter {
       const entry = object(value);
       return (
         !entry.url &&
-        fingerprint({ command: entry.command, args: entry.args }) === fingerprint(config)
+        // Codex can drop an empty args list when it rewrites the file.
+        fingerprint({ command: entry.command, args: entry.args ?? [] }) ===
+          fingerprint({ command: config.command, args: config.args ?? [] })
       );
     };
     if ((current !== undefined && !matches(current)) || (active !== undefined && !matches(active)))

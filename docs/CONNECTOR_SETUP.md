@@ -195,6 +195,8 @@ This creates an independent App Server/home/socket and fresh Claude PTY, guards 
 
 Automatic profile generation/target selection, installer uninstall/disable, manual binding fallback, startup-order recovery and broader host/fault compatibility remain follow-ups. `connections` still reports historical bindings; use the `connect` report for onboarding evidence.
 
+Hosts whose install path can change can set `mcpCommand` on a Codex profile, for example `{ "command": "/ABS/launcher", "args": [] }`. `connect` writes that command instead of the current Node and CLI paths, and compares against it on later connects. It replaces the default command entirely, so the launcher must run `agenthub mcp --connector-profile FILE` itself. Use `exec`, because identity checks require Codex to be the helper's direct parent. The command must be absolute. Changing it changes the profile revision, so sessions connect again.
+
 ## Existing Claude CLI: native-message activation
 
 The owner explicitly selects `"transport": "cli"` in the Hub's Claude profile. Omission retains MCP transport, whose external reload still returns `automatic_activation_unavailable`. CLI transport reuses restricted caller grants and a private client profile, without installing skills, MCP or lifecycle hooks:
