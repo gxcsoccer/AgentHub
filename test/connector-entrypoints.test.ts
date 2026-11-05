@@ -238,6 +238,37 @@ test('connector profiles require private files, restrict configuration and resol
   await assert.rejects(loadConnectorClientProfile(filename), /configuration/);
 });
 
+test('a credential removed by disconnect re-enrolls once on the next call', async () => {
+  let enrollments = 0,
+    calls = 0,
+    removed = false;
+  const fake: typeof fetch = async (url) => {
+    if (String(url).endsWith('/enroll')) {
+      enrollments++;
+      removed = false;
+      return Response.json({ token: 'business-'.repeat(8), binding: {} });
+    }
+    calls++;
+    return removed
+      ? Response.json(
+          { error: { code: 'invalid_credential', message: 'Unknown connector credential' } },
+          { status: 401 },
+        )
+      : Response.json({ ok: true });
+  };
+  const client = new ConnectorClient({
+    baseUrl: 'http://localhost:3211',
+    enrollmentToken: token,
+    evidence: { pid: 10001, startupSessionId: randomUUID() },
+    fetch: fake,
+  });
+  await client.identity();
+  removed = true;
+  await client.listPeers();
+  assert.equal(enrollments, 2);
+  assert.equal(calls, 3);
+});
+
 test('connector client coalesces enrollment and never automatically retries a failed write', async () => {
   let enrollments = 0,
     calls = 0,

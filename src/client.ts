@@ -123,6 +123,14 @@ export class AgentHubClient {
       at: string;
     }>('POST', '/v1/disconnect', {}, target);
   }
+  reconnect(target: { address: SessionAddress } | { profileId: string }) {
+    return this.request<{ reconnected: true; changed: boolean }>(
+      'POST',
+      '/v1/reconnect',
+      {},
+      target,
+    );
+  }
   connections() {
     return this.request<{ bindings: ConnectorBinding[]; liveness: string }>(
       'GET',

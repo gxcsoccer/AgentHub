@@ -21,7 +21,7 @@ test('published unified OpenAPI matches runtime and preserves explicit delivery 
     spec.paths['/v1/messages'].post.responses[202].content['application/json'].schema.$ref,
     '#/components/schemas/Receipt',
   );
-  assert.equal(Object.keys(spec.paths).length, 19);
+  assert.equal(Object.keys(spec.paths).length, 20);
   const connector =
     spec.paths['/v1/connector/call'].post.requestBody.content['application/json'].schema;
   assert.equal(connector.additionalProperties, false);

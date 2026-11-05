@@ -316,7 +316,21 @@ export const openApi = {
       post: {
         operationId: 'disconnectConnector',
         description:
-          'Owner only. Disconnects one session or one connector profile for later operations without a Hub restart, and removes its bindings, credentials and lifecycle records. Native MCP and hook configuration is not changed, and requests already accepted by a target are not cancelled. A later owner connect reverses it.',
+          'Owner only. Disconnects one session or one connector profile for later operations without a Hub restart, and removes its bindings, credentials and lifecycle records. Native MCP and hook configuration is not changed, and requests already accepted by a target are not cancelled. Owner reconnect or connect reverses it.',
+        requestBody: body({
+          oneOf: [
+            strictObject({ address: ref('SessionAddress') }, ['address']),
+            strictObject({ profileId: { type: 'string' } }, ['profileId']),
+          ],
+        }),
+        responses: responses({ type: 'object' }),
+      },
+    },
+    '/v1/reconnect': {
+      post: {
+        operationId: 'reconnectConnector',
+        description:
+          'Owner only. Reverses disconnect for one session or one connector profile without a handshake. The session enrolls again on its next tool call, and a disabled profile accepts new sessions again. changed is false when nothing was disconnected.',
         requestBody: body({
           oneOf: [
             strictObject({ address: ref('SessionAddress') }, ['address']),

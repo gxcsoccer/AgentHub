@@ -518,6 +518,23 @@ test('disconnect takes effect without a restart, survives one, and owner connect
   assert.equal((await f.service.connections()).profiles[0]!.enabled, false);
 });
 
+test('reconnect restores an MCP session and a disabled profile, and other sessions stay usable', async (t) => {
+  const f = await fixture(t);
+  await f.service.enroll(token, f.ea);
+  await f.service.enroll(token, f.eb);
+  assert.equal((await f.service.reconnect({ address: f.b })).changed, false);
+  await f.service.disconnect({ address: f.b });
+  await assert.rejects(f.service.enroll(token, f.eb), { code: 'connector_disconnected' });
+  assert.equal((await f.service.reconnect({ address: f.b })).changed, true);
+  assert.equal((await f.service.enroll(token, f.eb)).binding.address.sessionId, f.b.sessionId);
+  await f.service.disconnect({ profileId: f.profiles[0]!.id });
+  await assert.rejects(f.service.enroll(token, f.ea), { code: 'connector_disabled' });
+  await f.service.reconnect({ profileId: f.profiles[0]!.id });
+  await f.service.enroll(token, f.ea);
+  assert.equal((await f.service.connections()).profiles[0]!.enabled, true);
+  await assert.rejects(f.service.reconnect({ profileId: 'missing' }), /Unknown/);
+});
+
 test('connectedPeersOnly hides unbound, stale and disconnected sessions from peers and ask', async (t) => {
   const f = await fixture(t);
   const service = new ConnectorService(f.hub, f.profiles, {

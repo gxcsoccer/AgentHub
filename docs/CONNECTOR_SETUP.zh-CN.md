@@ -250,10 +250,18 @@ npm run smoke:connector:codex -- --run --claude-cli
 
 ```sh
 agenthub disconnect --harness codex --session-id ID
+agenthub reconnect --harness codex --session-id ID
 ```
 
-`disconnect` 只有所有者能调用，之后的操作立即生效，不用重启 Hub。通过库或 HTTP 调用时，可以断开单个会话（`{ address }`）或单个连接器 profile（`{ profileId }`），结果里会列出删除了多少绑定、凭证和生命周期记录。这个决定在重启后依然有效，否则会话下一次调用工具时会重新绑定自己。所有者之后对该会话执行 `connect` 即可恢复；如果 `connect` 失败，会话保持断开。
+`disconnect` 只有所有者能调用，之后的操作立即生效，不用重启 Hub。通过库或 HTTP 调用时，可以断开单个会话（`{ address }`）或单个连接器 profile（`{ profileId }`），结果里会列出删除了多少绑定、凭证和生命周期记录。这个决定在重启后依然有效，否则会话下一次调用工具时会重新绑定自己。
 
-原生 MCP 和 hook 配置不会改动，目标已经接受的请求也不会取消。已断开的会话作为目标时会被拒绝，错误码是 `peer_not_connected`。
+| 目标            | 新会话                            | 断开期间                                                    |
+| --------------- | --------------------------------- | ----------------------------------------------------------- |
+| `{ address }`   | 不受影响                          | 该会话的工具失败，按规范地址发送时返回 `peer_not_connected` |
+| `{ profileId }` | 被拒绝，返回 `connector_disabled` | 该 profile 的所有会话都失败                                 |
+
+`reconnect` 接受相同的目标，不需要握手就能恢复。会话下一次调用工具时重新登记，`connect` 无法激活的 MCP Claude 会话也一样。没有处于断开状态时，`changed` 为 false。所有者 `connect` 同样能恢复会话或 profile；如果它抛出错误，断开状态会还原。
+
+原生 MCP 和 hook 配置不会改动，目标已经接受的请求也不会取消。已断开的会话不会被列出，所以按名字询问时报告的是找不到或有歧义。
 
 `ConnectorService` 的 `connectedPeersOnly` 选项默认关闭。打开后，只有绑定来自当前已启用 profile 的会话才能被列出或询问。绑定仍然不代表会话存活。

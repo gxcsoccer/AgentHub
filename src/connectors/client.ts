@@ -86,9 +86,11 @@ export class ConnectorClient {
             this.business = undefined;
             this.businessExpires = Infinity;
           }
-          // This code is reserved for authorization failure before dispatch. Reuse
+          // These codes are reserved for authorization failure before dispatch. Reuse
           // the exact operation (ID/deadline included), never retry uncertain writes.
-          if (attempt === 0 && error.code === 'credential_expired') continue;
+          // invalid_credential covers a token removed by disconnect or a state reset.
+          if (attempt === 0 && ['credential_expired', 'invalid_credential'].includes(error.code))
+            continue;
         }
         throw error;
       }

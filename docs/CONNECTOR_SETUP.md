@@ -251,10 +251,18 @@ npm run smoke:connector:codex -- --run --claude-cli
 
 ```sh
 agenthub disconnect --harness codex --session-id ID
+agenthub reconnect --harness codex --session-id ID
 ```
 
-`disconnect` is owner-only and takes effect for later operations without a Hub restart. Library and HTTP callers can target one session (`{ address }`) or one connector profile (`{ profileId }`), and the result reports how many bindings, credentials and lifecycle records were removed. The decision persists across restarts because a session could otherwise bind itself again on its next tool call. A later owner `connect` for that session reverses it; if that connect fails, the session stays disconnected.
+`disconnect` is owner-only and takes effect for later operations without a Hub restart. Library and HTTP callers can target one session (`{ address }`) or one connector profile (`{ profileId }`), and the result reports how many bindings, credentials and lifecycle records were removed. The decision persists across restarts because a session could otherwise bind itself again on its next tool call.
 
-Native MCP and hook configuration is not changed, and requests already accepted by a target are not cancelled. A disconnected session is refused as a target with `peer_not_connected`.
+| Target          | New sessions                      | While disconnected                                                           |
+| --------------- | --------------------------------- | ---------------------------------------------------------------------------- |
+| `{ address }`   | Unaffected                        | That session's tools fail, and a canonical address gets `peer_not_connected` |
+| `{ profileId }` | Refused with `connector_disabled` | Every session of that profile fails                                          |
+
+`reconnect` takes the same target and reverses it without a handshake. The session enrolls again on its next tool call, including an MCP Claude session that `connect` can't activate. `changed` is false when nothing was disconnected. Owner `connect` also reverses a session or profile disconnect; if it throws, the disconnect is restored.
+
+Native MCP and hook configuration is not changed, and requests already accepted by a target are not cancelled. A disconnected session isn't listed, so asking for it by name reports a missing or ambiguous peer.
 
 With the `ConnectorService` option `connectedPeersOnly`, off by default, only sessions with a binding from a current, enabled profile can be listed or asked. Bindings are still not liveness signals.

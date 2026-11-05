@@ -710,7 +710,7 @@ export class ConnectorService {
   /**
    * Owner action, effective for later operations without restarting the Hub.
    * It does not edit native MCP or hook configuration, and requests already
-   * accepted by a target are not cancelled. A later owner connect reverses it.
+   * accepted by a target are not cancelled. Owner reconnect or connect reverses it.
    */
   async disconnect(value: unknown) {
     await this.hub.ready();
@@ -764,6 +764,28 @@ export class ConnectorService {
     }
     this.save(s);
     return { ...target, disconnected: true, removed, at };
+  }
+  /**
+   * Reverses disconnect without a handshake, which an MCP Claude session can't
+   * receive from the owner. The session re-enrolls on its next tool call.
+   */
+  async reconnect(value: unknown) {
+    await this.hub.ready();
+    const target = parse(disconnectSchema, value),
+      s = this.read();
+    let changed: boolean;
+    if ('profileId' in target) {
+      if (!this.profiles.some((p) => p.id === target.profileId))
+        throw new HubError('invalid_profile', 'Unknown connector profile', 404);
+      changed = Boolean(s.disabledProfiles?.[target.profileId]);
+      delete s.disabledProfiles?.[target.profileId];
+    } else {
+      const key = addressKey(target.address);
+      changed = Boolean(s.disconnected?.[key]);
+      delete s.disconnected?.[key];
+    }
+    if (changed) this.save(s);
+    return { ...target, reconnected: true, changed };
   }
   private restoreConnectable(value: unknown) {
     const parsed = connectTargetSchema.safeParse(value);

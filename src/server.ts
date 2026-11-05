@@ -99,12 +99,22 @@ export function createHubServer(options: {
       );
       return;
     }
-    if (req.method === 'POST' && url.pathname === '/v1/disconnect') {
+    if (
+      req.method === 'POST' &&
+      (url.pathname === '/v1/disconnect' || url.pathname === '/v1/reconnect')
+    ) {
       if (callerId !== OWNER)
         throw new HubError('forbidden', 'Connector disconnection requires the owner', 403);
       if (!options.connectors)
         throw new HubError('connector_disabled', 'Connectors are not configured', 503);
-      sendJson(res, 200, await options.connectors.disconnect(await readBody(req)));
+      const input = await readBody(req);
+      sendJson(
+        res,
+        200,
+        await (url.pathname === '/v1/disconnect'
+          ? options.connectors.disconnect(input)
+          : options.connectors.reconnect(input)),
+      );
       return;
     }
     if (req.method === 'GET' && url.pathname === '/v1/connections') {
