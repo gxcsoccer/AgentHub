@@ -115,7 +115,18 @@ agenthub setup uninstall --directory "$HOME/.agenthub/doubao"
 
 配置端口上的其他服务返回 401/403/404/405、HTML 或非 Hub JSON 时，清理可继续，服务保持运行。超时、连接重置或服务端故障会返回 `setup_hub_unknown` 并保留凭据；检查或停止该服务后重试。能响应且接受本配置凭据的 Hub 仍须先停止。
 
-卸载只删除未被修改的生成文件，保留私有回执状态、生命周期元数据和其他文件。**宿主条目需另行清理**：API 登记的豆包条目先执行 `setup host-remove`；无法核验远端清理时，使用上述显式 `host-forget` 恢复流程。从未尝试创建的记录可直接卸载。手工添加的条目在豆包界面删除；如果 `connect` 安装了原生 MCP，也应删除对应条目。命令明确返回 `hostCleanupRequired: true`，不编辑其他宿主配置。中断后的卸载可重试，删除前会校验所有剩余文件。已卸载配置不能重新启用。
+卸载只删除未被修改的生成文件，保留私有回执状态、生命周期元数据和其他文件。**宿主条目需另行清理**：API 登记的豆包条目先执行 `setup host-remove`；无法核验远端清理时，使用上述显式 `host-forget` 恢复流程。从未尝试创建的记录可直接卸载。手工添加的条目在豆包界面删除；如果 `connect` 安装了原生 MCP，也应删除对应条目。中断后的卸载可重试，删除前会校验所有剩余文件。已卸载配置不能重新启用。
+
+卸载结果分别报告豆包登记与原生连接器配置：
+
+| `cleanup.doubao.status` | 含义                                         | `hostCleanupRequired` |
+| ----------------------- | -------------------------------------------- | --------------------- |
+| `removed`               | 已核验记录中的条目被移除                     | `false`               |
+| `not_created`           | 记录中的登记从未尝试创建                     | `false`               |
+| `forgotten`             | 已显式放弃管理，按保留的名称/ID 在豆包中检查 | `true`                |
+| `untracked`             | 没有 API 登记记录，检查是否曾手工添加        | `true`                |
+
+`hostCleanupRequired` 仅指该豆包条目。`cleanup.nativeConnectors` 单独返回 `status: unchecked`、`checkRequired: true` 和配置过的 harness 列表，因为生成文件之外的原生安装未被跟踪。应检查这些 harness，只删除确实存在且引用本配置的原生条目。命令不修改原生配置，也不声称它们不存在；重复卸载保留相同的清理报告。
 
 ## 可选 CLI 插件
 

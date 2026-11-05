@@ -435,14 +435,42 @@ export async function uninstallSetup(directory: string) {
       });
       removed.push(name);
     }
+    // Only the recorded Doubao entry has a verified lifecycle. Manual entries and
+    // native connector configuration are not tracked by this manifest.
+    const host = data.doubaoHost;
+    const hostCleanupRequired = host?.phase !== 'removed';
+    const doubaoStatus =
+      host?.phase === 'removed'
+        ? host.attempted
+          ? 'removed'
+          : 'not_created'
+        : host?.phase === 'forgotten'
+          ? 'forgotten'
+          : 'untracked';
     return {
       directory,
       uninstalled: true,
       removed,
       statePreserved: true,
-      hostCleanupRequired: true,
+      hostCleanupRequired,
+      cleanup: {
+        doubao: {
+          status: doubaoStatus,
+          ...(host
+            ? { name: host.name, ...(host.connectorId ? { connectorId: host.connectorId } : {}) }
+            : {}),
+        },
+        nativeConnectors: {
+          status: 'unchecked',
+          checkRequired: true,
+          harnesses: [...new Set(data.targets.map((target) => target.harness))],
+        },
+      },
       nextAction:
-        'Remove only this AgentHub entry from the host UI and any installed native connector configuration. The state directory and unrelated files were preserved.',
+        (hostCleanupRequired
+          ? "Check Doubao for this setup's entry and remove it if present. "
+          : 'No further removal is required for the recorded Doubao entry. ') +
+        'Check the listed harnesses for native connector configuration referencing this setup and remove only matching entries if present. Native installation was not tracked. The state directory and unrelated files were preserved.',
     };
   } finally {
     release();

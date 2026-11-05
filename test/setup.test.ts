@@ -93,10 +93,17 @@ test('disable and enable persist across invocations; uninstall preserves state a
   assert.equal((await setSetupEnabled(directory, true)).enabled, true);
   const result = await uninstallSetup(directory);
   assert.equal(result.uninstalled, true);
+  assert.equal(result.hostCleanupRequired, true);
+  assert.equal(result.cleanup.doubao.status, 'untracked');
+  assert.deepEqual(result.cleanup.nativeConnectors, {
+    status: 'unchecked',
+    checkRequired: true,
+    harnesses: ['claude'],
+  });
   assert.equal(await readFile(join(directory, 'state.sqlite'), 'utf8'), 'private historical state');
   assert.equal(await readFile(join(directory, 'notes.txt'), 'utf8'), 'keep this');
   await assert.rejects(readFile(join(directory, 'caller.token')), { code: 'ENOENT' });
-  assert.equal((await uninstallSetup(directory)).uninstalled, true);
+  assert.deepEqual((await uninstallSetup(directory)).cleanup, result.cleanup);
   await assert.rejects(setSetupEnabled(directory, true), /uninstalled/i);
 });
 test('modified files and forged ownership manifests are refused without deleting user configuration', async (t) => {

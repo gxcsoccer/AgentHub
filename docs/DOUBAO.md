@@ -115,7 +115,18 @@ Disable persists a disabled flag, waits for this setup's managed Hub to exit and
 
 An unrelated service returning 401/403/404/405, HTML or non-Hub JSON on the configured port does not block cleanup and is left running. A timeout, connection reset or server failure returns `setup_hub_unknown` and retains credentials: inspect or stop that service, then retry. A responsive Hub accepting this setup's credentials still blocks cleanup until stopped.
 
-Uninstall removes only unchanged generated files, retaining private receipt state, lifecycle metadata and unrelated files. **Host entries are a separate cleanup step:** use `setup host-remove` for an API-managed Doubao entry before uninstalling, or the explicit `host-forget` recovery above when remote cleanup cannot be verified. Creation that was never attempted needs neither step. Remove a manually created entry through Doubao's UI, and the matching native MCP entry if `connect` installed one. The command reports `hostCleanupRequired: true`; it does not edit other host configuration. Interrupted uninstalls can be retried, with remaining files checked before deletion. Uninstalled setups cannot be re-enabled.
+Uninstall removes only unchanged generated files, retaining private receipt state, lifecycle metadata and unrelated files. **Host entries are a separate cleanup step:** use `setup host-remove` for an API-managed Doubao entry before uninstalling, or the explicit `host-forget` recovery above when remote cleanup cannot be verified. Creation that was never attempted needs neither step. Remove a manually created entry through Doubao's UI, and the matching native MCP entry if `connect` installed one. Interrupted uninstalls can be retried, with remaining files checked before deletion. Uninstalled setups cannot be re-enabled.
+
+The uninstall result separates Doubao registration from native connector configuration:
+
+| `cleanup.doubao.status` | Meaning                                                                   | `hostCleanupRequired` |
+| ----------------------- | ------------------------------------------------------------------------- | --------------------- |
+| `removed`               | Removal of the recorded entry was verified                                | `false`               |
+| `not_created`           | The recorded registration never attempted creation                        | `false`               |
+| `forgotten`             | Management was explicitly abandoned; check the retained name/ID in Doubao | `true`                |
+| `untracked`             | No API registration record; check for a manually added entry              | `true`                |
+
+`hostCleanupRequired` refers only to that Doubao entry. `cleanup.nativeConnectors` separately reports `status: unchecked`, `checkRequired: true` and the configured harnesses: installation outside the generated files is not tracked. Check those harnesses and remove only native configuration referencing this setup, if present. The command does not modify native configuration or claim it is absent; repeat uninstall preserves the same cleanup report.
 
 ## Optional CLI plugin
 

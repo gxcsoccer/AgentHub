@@ -1,5 +1,11 @@
 # Verification
 
+## PR #3 cleanup reporting and target discovery (2026-11-05)
+
+`npm run check` passes **250 tests** (181 core, 41 retained bridge, 28 script checks); coverage is **97.08% lines / 88.37% branches / 94.52% functions**. Five new process tests exercise the compiled `setup targets` CLI against an isolated Claude executable and Codex WebSocket/Unix-socket fixture: discovery, both pagination paths, empty results, malformed responses/cursors, invalid harnesses and unavailable backends. They verify read-only calls, connection closure and absence of generated configuration or state. Existing uninstall tests now assert all four Doubao cleanup states, separately unchecked native configuration and repeat-uninstall consistency, including compiled CLI output after verified host removal.
+
+`npm run test:package` also passes fresh installation, exports, binaries, HTTP/SQLite and installed setup CLI checks. These are local CLI/fixture checks. No real harness sessions or Doubao UI were contacted; the earlier real host evidence remains at `9c37af1`. Private logs are under `.local/verification/pr3-followups-*`.
+
 ## PR #3 recovery fixes (2026-11-05)
 
 `npm run check` passes **245 tests** (176 core, 41 retained bridge, 28 script checks); coverage is **96.30% lines / 87.58% branches / 94.12% functions**. All ten new regression tests failed before the fix and pass afterward. They cover UUID validation before file creation; cleanup with unrelated 401/HTML/non-Hub JSON services; explicit unknown ownership for a hung port with credential preservation; offline cleanup before creation; and exact-name `host-forget` after rejected creation, a lost response, manual entry deletion or a host upgrade.

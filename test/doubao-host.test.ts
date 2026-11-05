@@ -107,6 +107,16 @@ test('host lifecycle operates only on recorded matching configuration and verifi
   const manifest = await readFile(join(directory, 'setup.json'), 'utf8');
   assert(!manifest.includes('cookie'));
   assert(!manifest.includes('msToken'));
+  const result = JSON.parse(
+    (await exec(process.execPath, [cli, 'setup', 'uninstall', '--directory', directory])).stdout,
+  );
+  assert.equal(result.hostCleanupRequired, false);
+  assert.equal(result.cleanup.doubao.status, 'removed');
+  assert.equal(result.cleanup.doubao.connectorId, installed.connectorId);
+  assert.equal(result.cleanup.nativeConnectors.status, 'unchecked');
+  assert.equal(result.cleanup.nativeConnectors.checkRequired, true);
+  assert(!result.nextAction.includes('host UI'));
+  assert.deepEqual((await uninstallSetup(directory)).cleanup, result.cleanup);
 });
 test('lost create response recovers by unique name and exact configuration without another write', async (t) => {
   const { host, run } = await fixture(t);
@@ -149,7 +159,10 @@ test('unattempted host registration can be removed offline or directly uninstall
       });
       assert.equal(removed.phase, 'removed');
     }
-    assert.equal((await uninstallSetup(directory)).uninstalled, true);
+    const result = await uninstallSetup(directory);
+    assert.equal(result.uninstalled, true);
+    assert.equal(result.hostCleanupRequired, false);
+    assert.equal(result.cleanup.doubao.status, 'not_created');
     assert.equal((await loadSetup(directory)).doubaoHost?.phase, 'removed');
     assert.equal(host.creates, 0);
   }
@@ -195,7 +208,13 @@ for (const scenario of [
     );
     await assert.rejects(run('install'), { code: 'host_registration_forgotten' });
     assert.deepEqual(host.entries, hostEntries);
-    assert.equal((await uninstallSetup(directory)).uninstalled, true);
+    const result = await uninstallSetup(directory);
+    assert.equal(result.uninstalled, true);
+    assert.equal(result.hostCleanupRequired, true);
+    assert.equal(result.cleanup.doubao.status, 'forgotten');
+    assert.equal(result.cleanup.doubao.name, record.name);
+    assert.equal(result.cleanup.doubao.connectorId, record.connectorId);
+    assert.match(result.nextAction, /Doubao/);
     assert.equal((await loadSetup(directory)).doubaoHost?.phase, 'forgotten');
     assert.equal(host.creates, 1);
   });
