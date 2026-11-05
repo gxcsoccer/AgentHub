@@ -12,7 +12,11 @@ import { HubError } from '../src/validation.js';
 import type { ProcessIdentity, ConnectorProfile } from '../src/connectors/types.js';
 
 const token = 'connector-enrollment-'.repeat(3);
-async function fixture(t: test.TestContext, store?: ReceiptStore) {
+async function fixture(
+  t: test.TestContext,
+  store?: ReceiptStore,
+  extraProfiles: ConnectorProfile[] = [],
+) {
   const a = { harness: 'claude', instance: 'local', sessionId: randomUUID() };
   const b = { ...a, sessionId: randomUUID() };
   const rows = new Map<string, SessionInfo>([
@@ -88,6 +92,7 @@ async function fixture(t: test.TestContext, store?: ReceiptStore) {
       instance: 'local',
       enrollmentToken: token,
     },
+    ...extraProfiles,
   ];
   const processes = new Map<number, ProcessIdentity>();
   for (const [pid, ppid] of [
@@ -575,6 +580,75 @@ test('a disconnect during ask stops delivery at the boundary, including a late f
   assert.equal(f.adapter.calls.length, 0);
   release();
   await assert.rejects(asking, { code: 'peer_not_connected' });
+  assert.equal(f.adapter.calls.length, 0);
+});
+
+test('a profile disconnect during ask stops delivery, and owner sends keep their origin', async (t) => {
+  const f = await fixture(t);
+  const c = await f.service.enroll(token, f.ea);
+  const getSession = f.adapter.getSession.bind(f.adapter);
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  let reads = 0;
+  f.adapter.getSession = async (address) => {
+    if (address.sessionId === f.b.sessionId && ++reads === 2) await gate;
+    return getSession(address);
+  };
+  const asking = f.service.call(c.token, f.ea, {
+    operation: 'ask',
+    messageId: randomUUID(),
+    to: f.b,
+    message: 'hello',
+    expiresAt: new Date(Date.now() + 60000).toISOString(),
+  });
+  while (reads < 2) await new Promise((resolve) => setTimeout(resolve, 1));
+  await f.service.disconnect({ profileId: f.profiles[0]!.id });
+  release();
+  await assert.rejects(asking, { code: 'peer_not_connected' });
+  assert.equal(f.adapter.calls.length, 0);
+  await f.service.reconnect({ profileId: f.profiles[0]!.id });
+  const owner = await f.hub.send({
+    messageId: randomUUID(),
+    to: f.b,
+    origin: { name: 'owner', session: f.a },
+    text: 'hello',
+    delivery: 'peer_message',
+    messageKind: 'request',
+  });
+  assert.equal(owner.status, 'accepted');
+});
+
+test('a source disconnected during ask is refused while its target profile stays enabled', async (t) => {
+  const f = await fixture(t, undefined, [
+    {
+      id: 'second',
+      callerId: 'agents',
+      harness: 'claude',
+      instance: 'local',
+      enrollmentToken: 'second-token-'.repeat(4),
+    },
+  ]);
+  const service = f.service;
+  const c = await service.enroll(token, f.ea);
+  const getSession = f.adapter.getSession.bind(f.adapter);
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  let reads = 0;
+  f.adapter.getSession = async (address) => {
+    if (address.sessionId === f.b.sessionId && ++reads === 2) await gate;
+    return getSession(address);
+  };
+  const asking = service.call(c.token, f.ea, {
+    operation: 'ask',
+    messageId: randomUUID(),
+    to: f.b,
+    message: 'hello',
+    expiresAt: new Date(Date.now() + 60000).toISOString(),
+  });
+  while (reads < 2) await new Promise((resolve) => setTimeout(resolve, 1));
+  await service.disconnect({ profileId: f.profiles[0]!.id });
+  release();
+  await assert.rejects(asking, { code: 'connector_disconnected' });
   assert.equal(f.adapter.calls.length, 0);
 });
 

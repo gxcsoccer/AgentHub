@@ -55,7 +55,7 @@ export class AgentHub {
   // Newest event sequence among removed messages. listMessages reports a gap
   // when a caller's cursor is older, because those changes can't be replayed.
   private removedThrough = 0;
-  private deliveryGuards: ((envelope: Envelope) => void)[] = [];
+  private deliveryGuards: ((envelope: Envelope, callerId?: string) => void)[] = [];
   constructor(
     adapters: Adapter[],
     private readonly options: {
@@ -184,7 +184,7 @@ export class AgentHub {
     this.healthy();
   }
   /** Trusted in-process hook. A throw refuses delivery after every earlier check. */
-  guardDelivery(guard: (envelope: Envelope) => void) {
+  guardDelivery(guard: (envelope: Envelope, callerId?: string) => void) {
     this.deliveryGuards.push(guard);
   }
   /** Trusted in-process extension state, never exposed through the public API. */
@@ -517,7 +517,7 @@ export class AgentHub {
       if (Date.parse(entry.envelope.expiresAt) <= Date.now())
         throw new HubError('expired', 'Message expired', 409);
       // No await may follow this before adapter.send.
-      for (const guard of this.deliveryGuards) guard(entry.envelope);
+      for (const guard of this.deliveryGuards) guard(entry.envelope, entry.callerId);
     } catch (error) {
       this.apply(adapter, {
         messageId: entry.envelope.messageId,
@@ -724,21 +724,23 @@ export class AgentHub {
       afterId = '',
       gap = false;
     if (query.cursor !== undefined) {
-      const match = /^([^:]+):(\d+)(?::(.+))?$/.exec(query.cursor);
+      const match = /^([^:]+):(\d+)(?::(\d+):(.+))?$/.exec(query.cursor);
       if (!match || !Number.isSafeInteger(Number(match[2])))
         throw new HubError('invalid_cursor', 'Malformed message cursor');
       if (match[1] !== epoch || Number(match[2]) > sequence) gap = true;
       else {
         after = Number(match[2]);
-        afterId = match[3] ?? '\u{10ffff}';
-        gap = after < this.removedThrough;
+        afterId = match[4] ?? '\u{10ffff}';
+        // A partial page sits behind newer removals it already reported, so it
+        // carries the removal point it was issued at.
+        gap = this.removedThrough > Math.max(after, Number(match[3] ?? 0));
       }
     }
     const position = (entry: Entry) => [entry.sequence ?? 0, entry.envelope.messageId] as const;
     const rows = [...this.entries.values()]
       .filter((entry) => {
-        if (query.cursor === undefined || gap) return true;
         const [rowSequence, id] = position(entry);
+        if (query.cursor === undefined) return true;
         return rowSequence > after || (rowSequence === after && id > afterId);
       })
       .sort((a, b) => {
@@ -751,9 +753,9 @@ export class AgentHub {
     const last = page.at(-1);
     return {
       data: page.map(({ envelope, receipt }) => structuredClone({ envelope, receipt })),
-      // Messages can share a sequence, so a partial page also records the message ID.
+      // Messages can share a sequence, so a partial page also records its position.
       nextCursor: hasMore
-        ? `${epoch}:${last!.sequence ?? 0}:${last!.envelope.messageId}`
+        ? `${epoch}:${last!.sequence ?? 0}:${this.removedThrough}:${last!.envelope.messageId}`
         : `${epoch}:${sequence}`,
       hasMore,
       gap,

@@ -157,3 +157,33 @@ test('records from before 0.4.0 are listed after an upgrade and page without los
   } while (cursor);
   assert.deepEqual(seen, ids);
 });
+
+test('paging after a clear advances, and reports a removal only once', async (t) => {
+  const hub = new AgentHub([new TestAdapter()]);
+  t.after(() => hub.close());
+  const start = (await hub.listMessages()).nextCursor;
+  const waiting = [randomUUID(), randomUUID()].sort();
+  await hub.send(input({ messageKind: 'request', messageId: waiting[0]! }));
+  await hub.send(input({ messageKind: 'request', messageId: waiting[1]! }));
+  await hub.send(input());
+  assert.deepEqual(await hub.clearMessages(), { removed: 1, retained: 2 });
+  const fresh: string[] = [];
+  let cursor: string | undefined;
+  do {
+    const page = await hub.listMessages({ limit: 1, ...(cursor ? { cursor } : {}) });
+    assert.equal(page.gap, false);
+    fresh.push(...page.data.map((m) => m.envelope.messageId));
+    cursor = page.hasMore ? page.nextCursor : undefined;
+  } while (cursor);
+  assert.deepEqual(fresh, waiting);
+  const first = await hub.listMessages({ cursor: start, limit: 1 });
+  assert.equal(first.gap, true);
+  const second = await hub.listMessages({ cursor: first.nextCursor, limit: 1 });
+  assert.equal(second.gap, false);
+  assert.equal(second.hasMore, false);
+  assert.notEqual(second.data[0]!.envelope.messageId, first.data[0]!.envelope.messageId);
+  await hub.send(input());
+  await hub.clearMessages();
+  const stale = await hub.listMessages({ cursor: first.nextCursor, limit: 1 });
+  assert.equal(stale.gap, true);
+});

@@ -185,7 +185,7 @@ export class ConnectorService {
     this.state = hub.featureState('connectors');
     this.activation = new CliActivation(hub, this.inspect);
     this.read();
-    hub.guardDelivery((envelope) => this.assertDeliverable(envelope));
+    hub.guardDelivery((envelope, callerId) => this.assertDeliverable(envelope, callerId));
   }
   private read(): State {
     const raw = this.state.get('registry');
@@ -260,15 +260,26 @@ export class ConnectorService {
   }
   private peerAllowed(address: SessionAddress, s: State = this.read()) {
     if (s.disconnected?.[addressKey(address)]) return false;
+    const owners = this.profiles.filter(
+      (p) =>
+        p.enabled !== false && p.harness === address.harness && p.instance === address.instance,
+    );
+    if (owners.length && owners.every((p) => s.disabledProfiles?.[p.id])) return false;
     return !this.options.connectedPeersOnly || this.connectedAddresses(s).has(addressKey(address));
   }
   // Runs at the delivery boundary: a disconnect can complete during earlier awaits.
-  private assertDeliverable(envelope: Envelope) {
+  private assertDeliverable(envelope: Envelope, callerId?: string) {
     if (!envelope.origin.session) return;
     const s = this.read();
     if (!this.peerAllowed(envelope.to, s))
       throw new HubError('peer_not_connected', 'Target session is not connected', 409);
-    if (envelope.messageKind === 'request' && !this.peerAllowed(envelope.origin.session, s))
+    // Connector requests always come from a bound session. Disconnecting the
+    // session or its profile removes that binding.
+    if (
+      envelope.messageKind === 'request' &&
+      this.profiles.some((p) => p.callerId === callerId) &&
+      !this.connectedAddresses(s).has(addressKey(envelope.origin.session))
+    )
       throw new HubError('connector_disconnected', 'Session was disconnected by the owner', 403);
   }
   private enrollment(token: string) {
