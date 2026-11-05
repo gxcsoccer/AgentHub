@@ -85,6 +85,8 @@ export interface Update {
   reply?: Reply;
   native?: Json;
   error?: { code: string; message: string };
+  /** The target's turn ended without an answer that could be returned. A later reply clears it. */
+  noReply?: { reason: string; at: string };
 }
 export interface Receipt extends Update {
   to: SessionAddress;

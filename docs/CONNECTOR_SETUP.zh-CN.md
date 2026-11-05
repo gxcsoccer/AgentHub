@@ -118,7 +118,7 @@ agenthub serve --config /ABS/hub.json --access-file /ABS/access.json \
 
 `to` 可以是 `{harness, instance, sessionId}` 或 `@claude/名称`、`@codex/名称`。名称只用于一次查找，重名拒绝；发送固定原生地址。目标必须支持外部消息和回复，缺监听/工具时返回未就绪，发送过程不做隐式 attach。
 
-工具返回请求 ID 和异步等待提示。发起方可做独立工作或结束本轮，结果作为关联的外部消息到达；期间用户的新要求继续按用户要求处理。写入失败不会自动重试，错误带请求 ID，所有者可用 `agenthub status --message-id UUID` 检查。模型再次调用 `ask_agent` 是新请求，不承诺跨模型重试去重。
+工具返回请求 ID 和异步等待提示。发起方可做独立工作或结束本轮，结果作为关联的外部消息到达；期间用户的新要求继续按用户要求处理。请求失败不会自动重试，错误带请求 ID，所有者可用 `agenthub status --message-id UUID` 检查。模型再次调用 `ask_agent` 是新请求，不承诺跨模型重试去重。
 
 ```sh
 agenthub connections --url http://127.0.0.1:3211 --token-file /ABS/owner.token
@@ -245,3 +245,37 @@ agenthub agent --connector-profile /ABS/client.json reply --request REQUEST_UUID
 npm run smoke:connector:cli -- --run
 npm run smoke:connector:codex -- --run --claude-cli
 ```
+
+## 断开连接
+
+```sh
+agenthub disconnect --harness codex --session-id ID
+agenthub reconnect --harness codex --session-id ID
+```
+
+`disconnect` 只有所有者能调用，之后的操作立即生效，不用重启 Hub。通过库或 HTTP 调用时，可以断开单个会话（`{ address }`）或单个连接器 profile（`{ profileId }`），结果里会列出删除了多少绑定、凭证和生命周期记录。这个决定在重启后依然有效，否则会话下一次调用工具时会重新绑定自己。
+
+| 目标            | 新会话                            | 断开期间                                                    |
+| --------------- | --------------------------------- | ----------------------------------------------------------- |
+| `{ address }`   | 不受影响                          | 该会话的工具失败，按规范地址发送时返回 `peer_not_connected` |
+| `{ profileId }` | 被拒绝，返回 `connector_disabled` | 该 profile 的所有会话都失败                                 |
+
+`reconnect` 接受相同的目标，不需要握手就能恢复。会话下一次调用工具时重新登记，`connect` 无法激活的 MCP Claude 会话也一样。没有处于断开状态时，`changed` 为 false。所有者 `connect` 同样能恢复会话或 profile；如果它抛出错误，断开状态会还原。
+
+原生 MCP 和 hook 配置不会改动，目标已经接受的请求也不会取消。已断开的会话不会被列出，所以按名字询问时报告的是找不到或有歧义。
+
+`ConnectorService` 的 `connectedPeersOnly` 选项默认关闭。打开后，只有绑定来自当前已启用 profile 的会话才能被列出或询问。绑定仍然不代表会话存活。
+Hub 不可用时，`reply_agent` 会用相同内容重试，最长 25 秒，之后返回包含请求 ID 的错误。Hub 把相同内容的重放当作重复处理。如果中断时间更长且 Agent 没有再次重试，回复仍可能丢失。`ask_agent` 不会自动重试。
+
+## Codex 回复兜底
+
+普通 Codex 会话可能只打印答案而不调用 `reply_agent`，发起方就会一直等。嵌入方可以用 `new CodexAdapter({ replyFallback: true })` 打开兜底。它默认关闭，因为默认情况下 `replied` 表示对方明确回复过。
+
+请求所在的一轮结束时，适配器会读取这一轮：
+
+- 如果这条请求是这一轮唯一的输入，没有用户消息，且恰好有一条最终回答，就把这条回答作为回复。`reply.metadata.source` 为 `turn_final_message`，转发结果的 origin name 也会说明文本取自最终回答。
+- 其他情况不发送任何文本，因为合并的一轮可能包含用户自己的工作。回执会带上 `noReply: { reason, at }`，之后收到真实回复时会清除。原因包括 `merged_turn`、`reply_call_failed`、`no_single_answer`、`turn_interrupted` 和 `turn_failed`。
+
+`noReply` 只有所有者能看到，发起方的 Agent 目前收不到通知，所以目标正忙时它可能一直等到期限。这部分按 Codex 0.166.0 的 turn 结构核对过。
+
+> > > > > > > d4820f3 (feat: add opt-in Codex reply fallback)

@@ -312,11 +312,39 @@ export const openApi = {
         responses: responses({ type: 'object' }),
       },
     },
+    '/v1/disconnect': {
+      post: {
+        operationId: 'disconnectConnector',
+        description:
+          'Owner only. Disconnects one session or one connector profile for later operations without a Hub restart, and removes its bindings, credentials and lifecycle records. Native MCP and hook configuration is not changed, and requests already accepted by a target are not cancelled. Owner reconnect or connect reverses it.',
+        requestBody: body({
+          oneOf: [
+            strictObject({ address: ref('SessionAddress') }, ['address']),
+            strictObject({ profileId: { type: 'string' } }, ['profileId']),
+          ],
+        }),
+        responses: responses({ type: 'object' }),
+      },
+    },
+    '/v1/reconnect': {
+      post: {
+        operationId: 'reconnectConnector',
+        description:
+          'Owner only. Reverses disconnect for one session or one connector profile without a handshake. The session enrolls again on its next tool call, and a disabled profile accepts new sessions again. changed is false when nothing was disconnected.',
+        requestBody: body({
+          oneOf: [
+            strictObject({ address: ref('SessionAddress') }, ['address']),
+            strictObject({ profileId: { type: 'string' } }, ['profileId']),
+          ],
+        }),
+        responses: responses({ type: 'object' }),
+      },
+    },
     '/v1/connections': {
       get: {
         operationId: 'listConnections',
         description:
-          'Owner only. Historical bindings and enabled profiles, never credentials. A binding is not a session or connector liveness signal.',
+          'Owner only. Historical bindings, owner disconnections and enabled profiles, never credentials. A binding is not a session or connector liveness signal.',
         responses: responses({ type: 'object' }),
       },
     },
@@ -405,6 +433,22 @@ export const openApi = {
       },
     },
     '/v1/messages': {
+      get: {
+        operationId: 'listMessages',
+        description:
+          'Owner only. Retained messages with envelope and receipt, oldest change first. A message reappears whenever it changes, so upsert by messageId. gap means changes after the cursor were removed by expiry or clearing and cannot be returned. Retention is bounded, so this is not a long-term archive.',
+        parameters: [
+          param('cursor', string),
+          param('limit', { type: 'integer', minimum: 1, maximum: 500, default: 100 }),
+        ],
+        responses: responses({ type: 'object' }),
+      },
+      delete: {
+        operationId: 'clearMessages',
+        description:
+          'Owner only. Removes finished messages and all retained events. Requests still waiting for a reply or a forward are kept and counted in retained. Connector bindings and credentials are unaffected. Older event cursors report event_cursor_expired.',
+        responses: responses({ type: 'object' }),
+      },
       post: {
         operationId: 'sendMessage',
         description:

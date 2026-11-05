@@ -205,3 +205,138 @@ test('Codex resolves or invalidates approvals without an implicit response and l
   assert.equal(adapter.pendingRequests().length, 0);
   assert.equal(rpc.responses.length, 1);
 });
+
+const envelope = (messageId: string) => ({
+  type: 'functionCallOutput',
+  name: 'receive_message',
+  namespace: 'agenthub',
+  output: JSON.stringify({ message: { messageId, messageKind: 'request' } }),
+});
+const answer = (text: string, phase = 'final_answer') => ({ type: 'agentMessage', text, phase });
+function fallback(t: test.TestContext, replyFallback = true) {
+  const rpc = new FakeRpc();
+  let turns: unknown[] = [];
+  rpc.handlers.set('thread/read', () => ({
+    thread: { id, status: { type: 'idle' }, canAcceptDirectInput: true, turns },
+  }));
+  rpc.handlers.set('thread/loaded/list', () => ({ data: [id], nextCursor: null }));
+  rpc.handlers.set('turn/start', () => ({ turn: { id: 'turn' } }));
+  const adapter = new CodexAdapter({ rpc, replyFallback });
+  const hub = new AgentHub([adapter]);
+  t.after(() => hub.close());
+  const finish = async (messageId: string, items: unknown[], status = 'completed') => {
+    turns = [{ id: 'turn', status, items }];
+    rpc.emit('notification', { method: 'turn/completed', params: { threadId: id } });
+    for (let i = 0; i < 50 && !hub.receipt(messageId).reply; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 2));
+      if (hub.receipt(messageId).noReply) break;
+    }
+    return hub.receipt(messageId);
+  };
+  return { rpc, adapter, hub, finish };
+}
+const request = () => ({ ...message(), messageKind: 'request' as const });
+
+test('reply fallback returns the answer of a turn whose sole input was the request', async (t) => {
+  const { hub, finish } = fallback(t);
+  const input = request();
+  await hub.send(input);
+  const receipt = await finish(input.messageId, [
+    envelope(input.messageId),
+    { type: 'reasoning', summary: [], content: [] },
+    answer('working', 'commentary'),
+    answer('ALONE-1'),
+  ]);
+  assert.equal(receipt.status, 'replied');
+  assert.equal(receipt.reply?.text, 'ALONE-1');
+  assert.equal(receipt.reply?.metadata?.source, 'turn_final_message');
+});
+
+test('reply fallback sends no text for merged, ambiguous, failed or interrupted turns', async (t) => {
+  const user = { type: 'userMessage', content: [{ type: 'text', text: 'private work' }] };
+  const failedCall = { type: 'mcpToolCall', tool: 'reply_agent', status: 'failed' };
+  const other = randomUUID();
+  const cases: [(id: string) => unknown[], string, string?][] = [
+    [(m) => [user, answer('private work'), envelope(m), answer('reply')], 'merged_turn'],
+    [(m) => [envelope(m), envelope(other), answer('reply')], 'merged_turn'],
+    [(m) => [envelope(m), failedCall, answer('could not reply')], 'reply_call_failed'],
+    [(m) => [envelope(m), answer('a'), answer('b')], 'no_single_answer'],
+    [(m) => [envelope(m), answer('', 'final_answer')], 'no_single_answer'],
+    [(m) => [envelope(m), answer('partial')], 'turn_interrupted', 'interrupted'],
+    [(m) => [envelope(m), answer('partial')], 'turn_failed', 'failed'],
+  ];
+  for (const [items, reason, status] of cases) {
+    const { hub, finish, adapter } = fallback(t);
+    const input = request();
+    await hub.send(input);
+    const receipt = await finish(input.messageId, items(input.messageId), status);
+    assert.equal(receipt.reply, undefined);
+    assert.equal(receipt.status, 'received');
+    assert.equal(receipt.noReply?.reason, reason);
+    adapter.emit('update', {
+      messageId: input.messageId,
+      status: 'replied',
+      reply: { text: 'real reply' },
+    });
+    assert.equal(hub.receipt(input.messageId).noReply, undefined);
+    assert.equal(hub.receipt(input.messageId).reply?.text, 'real reply');
+  }
+});
+
+test('an explicit reply wins, and the fallback stays off by default', async (t) => {
+  const on = fallback(t);
+  const input = request();
+  await on.hub.send(input);
+  on.adapter.emit('update', {
+    messageId: input.messageId,
+    status: 'replied',
+    reply: { text: 'explicit' },
+  });
+  const call = { type: 'mcpToolCall', tool: 'reply_agent', status: 'completed' };
+  const receipt = await on.finish(input.messageId, [
+    envelope(input.messageId),
+    call,
+    answer('done'),
+  ]);
+  assert.equal(receipt.reply?.text, 'explicit');
+  assert.equal(receipt.reply?.metadata, undefined);
+  const off = fallback(t, false);
+  const other = request();
+  await off.hub.send(other);
+  await off.finish(other.messageId, [envelope(other.messageId), answer('text')]);
+  assert.equal(off.hub.receipt(other.messageId).reply, undefined);
+  assert.equal(off.rpc.calls.filter((c) => c.params.includeTurns).length, 0);
+});
+
+test('a forwarded fallback is labeled, watches resume after restart, and close stops polling', async (t) => {
+  const { hub, adapter, rpc, finish } = fallback(t);
+  await hub.ready();
+  const restored = randomUUID();
+  await adapter.restore([
+    {
+      ...request(),
+      messageId: restored,
+      hopCount: 0,
+      expiresAt: new Date(Date.now() + 60000).toISOString(),
+    },
+  ]);
+  const input = {
+    ...request(),
+    replyTo: { harness: 'codex', instance: 'local', sessionId: id },
+  };
+  await hub.send(input);
+  await finish(input.messageId, [envelope(input.messageId), answer('answer')]);
+  const forwarded = await hub.receipt(input.messageId);
+  assert.equal(forwarded.reply?.text, 'answer');
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  const outputs = rpc.calls
+    .filter((c) => c.method === 'turn/start')
+    .map((c) => JSON.parse(String((c.params.toolOutput as { output: string }).output)));
+  const result = outputs.find((o) => o.message.messageKind === 'result');
+  assert.match(result.message.origin.name, /did not call reply_agent/);
+  await hub.close();
+  const reads = rpc.calls.length;
+  rpc.emit('notification', { method: 'turn/completed', params: { threadId: id } });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(rpc.calls.length, reads);
+});

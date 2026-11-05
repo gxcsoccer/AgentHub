@@ -145,6 +145,11 @@ test('Claude diagnosis identifies opt-out, unvalidated version and missing inbox
       'socket_unavailable',
     ],
     [{ socketAvailable: false }, 'socket_unavailable'],
+    [{ cliVersion: '2.1.318', nativeVersionSupported: false }, 'unsupported_version'],
+    [
+      { cliVersion: 'newer', nativeVersionSupported: true, socketAvailable: false },
+      'socket_unavailable',
+    ],
   ] as const) {
     const { client } = fixture({
       instances: [scope],

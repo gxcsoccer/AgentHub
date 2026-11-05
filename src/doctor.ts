@@ -112,17 +112,19 @@ function targetChecks(info: SessionInfo, scope: SessionAddress): DiagnosticCheck
             'Claude native messaging is disabled. The owner can explicitly enable it in the daemon configuration.',
         };
       else if (
-        typeof metadata.validatedCliVersion === 'string' &&
-        !(Array.isArray(metadata.validatedCliVersions)
-          ? metadata.validatedCliVersions.includes(installedCliVersion)
-          : installedCliVersion === metadata.validatedCliVersion)
+        typeof metadata.nativeVersionSupported === 'boolean'
+          ? !metadata.nativeVersionSupported
+          : typeof metadata.validatedCliVersion === 'string' &&
+            !(Array.isArray(metadata.validatedCliVersions)
+              ? metadata.validatedCliVersions.includes(installedCliVersion)
+              : installedCliVersion === metadata.validatedCliVersion)
       )
         send = {
           ...send,
           status: 'error',
           code: 'unsupported_version',
           message:
-            'The installed Claude CLI does not match the adapter validated version. Validate an adapter update before enabling sends.',
+            'The installed Claude CLI is not supported by the adapter version policy. Validate an adapter update before enabling sends.',
         };
       else if (metadata.socketAvailable === false)
         send = {

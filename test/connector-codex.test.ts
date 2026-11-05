@@ -426,6 +426,44 @@ test('Codex installation uses versioned native config writes, preserves conflict
   assert.equal(f.rpc.calls.filter((c) => c.method === 'config/mcpServer/reload').length, 1);
 });
 
+test('an overlay entry activates without writing the user file, and overlay conflicts are preserved', async (t) => {
+  const f = await fixture(t),
+    address = { harness: 'codex', instance: 'local', sessionId: f.a },
+    config = { command: '/node', args: ['/cli', 'mcp'] };
+  let active: unknown = config;
+  f.rpc.handlers.set('config/read', () => ({
+    config: { mcp_servers: { agenthub: active } },
+    layers: [{ name: { type: 'user', file: '/private/config.toml' }, version: 'v1', config: {} }],
+  }));
+  f.rpc.handlers.set('config/mcpServer/reload', () => ({}));
+  assert.deepEqual(await f.adapter.installConnector(address, 'agenthub', config), {
+    changed: false,
+    activationScope: 'instance',
+    reloaded: false,
+  });
+  assert.equal(f.rpc.calls.filter((c) => c.method === 'config/value/write').length, 0);
+  active = { ...config, command: '/other' };
+  await assert.rejects(f.adapter.installConnector(address, 'agenthub', config), /differs/);
+  assert.equal(f.rpc.calls.filter((c) => c.method === 'config/value/write').length, 0);
+});
+
+test('an overlay entry needs no writable user layer, but a required write still does', async (t) => {
+  const f = await fixture(t),
+    address = { harness: 'codex', instance: 'local', sessionId: f.a },
+    config = { command: '/node', args: ['/cli', 'mcp'] };
+  let active: unknown = config;
+  f.rpc.handlers.set('config/read', () => ({
+    config: { mcp_servers: active ? { agenthub: active } : {} },
+    layers: [],
+  }));
+  f.rpc.handlers.set('config/mcpServer/reload', () => ({}));
+  assert.equal((await f.adapter.installConnector(address, 'agenthub', config)).changed, false);
+  active = undefined;
+  await assert.rejects(f.adapter.installConnector(address, 'agenthub', config), {
+    code: 'configuration_unavailable',
+  });
+});
+
 test('official MCP transport keeps concurrent Codex call identities separate and ignores inherited IDs', async (t) => {
   const f = await fixture(t),
     app = createHubServer({ hub: f.hub, token: testToken, connectors: f.service });
