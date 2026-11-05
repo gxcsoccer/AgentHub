@@ -16,6 +16,7 @@ test('HTTP rejects malformed requests before any native send and allows only con
   });
   assert.equal(preflight.status, 204);
   assert.equal(preflight.headers.get('access-control-allow-origin'), 'https://allowed.example');
+  assert.match(preflight.headers.get('access-control-allow-methods') ?? '', /DELETE/);
   const allowed = await fetch(baseUrl + '/v1/instances', {
     headers: { ...headers, Origin: 'https://allowed.example' },
   });

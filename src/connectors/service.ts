@@ -4,7 +4,7 @@ import { AgentHub } from '../hub.js';
 import { OWNER } from '../access.js';
 import { HubError, addressKey, fingerprint } from '../validation.js';
 import type { AdapterState } from '../store.js';
-import type { SessionAddress, SessionInfo } from '../types.js';
+import type { Envelope, SessionAddress, SessionInfo } from '../types.js';
 import { createProcessInspector } from './process.js';
 import { connectSession } from './onboarding.js';
 import { CliActivation } from './cli-activation.js';
@@ -101,7 +101,6 @@ const disconnectSchema = z.union([
   z.strictObject({ address }),
   z.strictObject({ profileId: string }),
 ]);
-const connectTargetSchema = z.looseObject({ address });
 const capacity = 4096;
 const operationSchema = z.discriminatedUnion('operation', [
   z.strictObject({ operation: z.literal('identity') }),
@@ -186,6 +185,7 @@ export class ConnectorService {
     this.state = hub.featureState('connectors');
     this.activation = new CliActivation(hub, this.inspect);
     this.read();
+    hub.guardDelivery((envelope) => this.assertDeliverable(envelope));
   }
   private read(): State {
     const raw = this.state.get('registry');
@@ -225,14 +225,12 @@ export class ConnectorService {
       (_, h) => (!current(h.profileId, h.revision) ? 0 : h.ended ? 1 : 2),
       (h) => h.seenAt ?? '',
     );
-    if (s.disconnected)
-      reclaim(
-        s.disconnected,
-        () => 0,
-        (d) => d.at,
-      );
-    // Credentials expire, so they stay bounded without evicting a live session's token.
-    if (Object.keys(s.credentials).length > capacity)
+    // Credentials expire on their own. Disconnect records are owner decisions, so they
+    // are never evicted: the owner releases them with reconnect.
+    if (
+      Object.keys(s.credentials).length > capacity ||
+      Object.keys(s.disconnected ?? {}).length > capacity
+    )
       throw new HubError('connector_capacity', 'Connector registry capacity reached', 429);
     s.version = 4;
     this.state.set('registry', s);
@@ -263,6 +261,15 @@ export class ConnectorService {
   private peerAllowed(address: SessionAddress, s: State = this.read()) {
     if (s.disconnected?.[addressKey(address)]) return false;
     return !this.options.connectedPeersOnly || this.connectedAddresses(s).has(addressKey(address));
+  }
+  // Runs at the delivery boundary: a disconnect can complete during earlier awaits.
+  private assertDeliverable(envelope: Envelope) {
+    if (!envelope.origin.session) return;
+    const s = this.read();
+    if (!this.peerAllowed(envelope.to, s))
+      throw new HubError('peer_not_connected', 'Target session is not connected', 409);
+    if (envelope.messageKind === 'request' && !this.peerAllowed(envelope.origin.session, s))
+      throw new HubError('connector_disconnected', 'Session was disconnected by the owner', 403);
   }
   private enrollment(token: string) {
     const hash = fingerprint(token);
@@ -787,40 +794,39 @@ export class ConnectorService {
     if (changed) this.save(s);
     return { ...target, reconnected: true, changed };
   }
-  private restoreConnectable(value: unknown) {
-    const parsed = connectTargetSchema.safeParse(value);
-    if (!parsed.success) return () => {};
-    const { address } = parsed.data,
-      key = addressKey(address),
+  // Scoped to the profile whose credential the owner supplied, so connecting one
+  // profile can't re-enable another that shares the instance.
+  private restoreConnectable(profile: ConnectorProfile, address: SessionAddress) {
+    const key = addressKey(address),
       s = this.read(),
       tombstone = s.disconnected?.[key],
-      profiles = this.profiles.filter(
-        (p) =>
-          p.harness === address.harness &&
-          p.instance === address.instance &&
-          s.disabledProfiles?.[p.id],
-      );
-    if (!tombstone && !profiles.length) return () => {};
-    const disabled = Object.fromEntries(profiles.map((p) => [p.id, s.disabledProfiles![p.id]!]));
+      disabled = s.disabledProfiles?.[profile.id];
+    if (!tombstone && !disabled) return () => {};
     if (tombstone) delete s.disconnected![key];
-    for (const p of profiles) delete s.disabledProfiles![p.id];
+    if (disabled) delete s.disabledProfiles![profile.id];
     this.save(s);
     return () => {
       const latest = this.read();
       if (tombstone) (latest.disconnected ??= {})[key] = tombstone;
-      if (profiles.length) latest.disabledProfiles = { ...latest.disabledProfiles, ...disabled };
+      if (disabled) (latest.disabledProfiles ??= {})[profile.id] = disabled;
       this.save(latest);
     };
   }
   async connect(value: unknown, port: number) {
     await this.hub.ready();
-    const undo = this.restoreConnectable(value);
-    return this.connectBound(value, port).catch((error: unknown) => {
+    let undo = () => {};
+    return this.connectBound(value, port, (profile, address) => {
+      undo = this.restoreConnectable(profile, address);
+    }).catch((error: unknown) => {
       undo();
       throw error;
     });
   }
-  private connectBound(value: unknown, port: number) {
+  private connectBound(
+    value: unknown,
+    port: number,
+    prepare: (profile: ConnectorProfile, address: SessionAddress) => void,
+  ) {
     return connectSession(
       this.hub,
       this.profiles,
@@ -847,6 +853,7 @@ export class ConnectorService {
       port,
       (profile, address, path, waitMs, retry) =>
         this.activation.connect(profile, address, path, waitMs, retry),
+      prepare,
     );
   }
   async connections() {

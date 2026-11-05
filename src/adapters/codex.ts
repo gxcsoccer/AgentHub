@@ -38,10 +38,25 @@ interface Pending {
   params: Json;
   timer: NodeJS.Timeout;
 }
+/** Items a model produces itself. Anything else counts as another input to the turn. */
+const ownTurnItems = new Set([
+  'agentMessage',
+  'reasoning',
+  'plan',
+  'mcpToolCall',
+  'commandExecution',
+  'fileChange',
+  'webSearch',
+]);
 const turnItems = (turn: Json) => (Array.isArray(turn.items) ? turn.items.map(object) : []);
 /** The message ID carried by a delivered AgentHub envelope, if the item is one. */
 function envelopeId(item: Json): string | undefined {
-  if (item.type !== 'functionCallOutput' || item.name !== 'receive_message') return undefined;
+  if (
+    item.type !== 'functionCallOutput' ||
+    item.name !== 'receive_message' ||
+    item.namespace !== 'agenthub'
+  )
+    return undefined;
   try {
     const id = object(object(JSON.parse(String(item.output))).message).messageId;
     return typeof id === 'string' ? id : undefined;
@@ -481,9 +496,10 @@ export class CodexAdapter extends EventEmitter implements Adapter {
     const calls = items.filter((i) => i.type === 'mcpToolCall' && i.tool === 'reply_agent');
     if (calls.some((call) => call.status === 'completed')) return;
     const answers = items.filter((i) => i.type === 'agentMessage' && i.phase === 'final_answer');
+    // Allowlisted so an unknown or foreign input can never be returned to the requester.
     const merged =
-      items.some((i) => i.type === 'userMessage') ||
-      items.filter((i) => envelopeId(i) !== undefined).length !== 1;
+      envelopeId(items[0] ?? {}) !== messageId ||
+      items.slice(1).some((i) => !ownTurnItems.has(String(i.type)));
     const reason =
       turn.status !== 'completed'
         ? `turn_${String(turn.status)}`

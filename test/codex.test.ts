@@ -259,6 +259,23 @@ test('reply fallback sends no text for merged, ambiguous, failed or interrupted 
   const cases: [(id: string) => unknown[], string, string?][] = [
     [(m) => [user, answer('private work'), envelope(m), answer('reply')], 'merged_turn'],
     [(m) => [envelope(m), envelope(other), answer('reply')], 'merged_turn'],
+    [
+      (m) => [
+        envelope(m),
+        { type: 'functionCallOutput', name: 'other_app', namespace: 'x', output: 'private' },
+        answer('private'),
+      ],
+      'merged_turn',
+    ],
+    [
+      (m) => [
+        { type: 'functionCallOutput', name: 'other_app', namespace: 'x', output: 'private' },
+        envelope(m),
+        answer('private'),
+      ],
+      'merged_turn',
+    ],
+    [(m) => [envelope(m), { type: 'futureInput' }, answer('private')], 'merged_turn'],
     [(m) => [envelope(m), failedCall, answer('could not reply')], 'reply_call_failed'],
     [(m) => [envelope(m), answer('a'), answer('b')], 'no_single_answer'],
     [(m) => [envelope(m), answer('', 'final_answer')], 'no_single_answer'],

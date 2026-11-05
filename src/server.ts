@@ -56,7 +56,7 @@ export function createHubServer(options: {
     }
     if (req.method === 'OPTIONS' && origin) {
       res.writeHead(204, {
-        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
         'Access-Control-Allow-Headers': 'Authorization, Content-Type, Last-Event-ID',
       });
       res.end();

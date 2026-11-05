@@ -134,3 +134,26 @@ test('owner HTTP routes list and clear messages', async (t) => {
   assert.deepEqual(await client.clearMessages(), { removed: 1, retained: 0 });
   assert.equal((await client.listMessages()).data.length, 0);
 });
+
+test('records from before 0.4.0 are listed after an upgrade and page without loss', async (t) => {
+  const file = await stateFile(t);
+  const store = await openReceiptStore(file);
+  const hub = new AgentHub([new TestAdapter()], { store });
+  const ids = [randomUUID(), randomUUID(), randomUUID()].sort();
+  for (const messageId of ids) await hub.send(input({ messageId }));
+  await hub.close();
+  const db = new DatabaseSync(file);
+  db.exec("UPDATE receipts SET value=json_remove(value,'$.sequence')");
+  db.close();
+  const upgraded = new AgentHub([new TestAdapter()], { store: await openReceiptStore(file) });
+  t.after(() => upgraded.close());
+  const seen: string[] = [];
+  let cursor: string | undefined;
+  do {
+    const page = await upgraded.listMessages({ limit: 2, ...(cursor ? { cursor } : {}) });
+    assert.equal(page.gap, false);
+    seen.push(...page.data.map((m) => m.envelope.messageId));
+    cursor = page.hasMore ? page.nextCursor : undefined;
+  } while (cursor);
+  assert.deepEqual(seen, ids);
+});

@@ -531,6 +531,52 @@ test('official MCP transport keeps concurrent Codex call identities separate and
   );
 });
 
+test('connect restores only the profile matching its credential and undoes that on failure', async (t) => {
+  const f = await fixture(t),
+    dir = await mkdtemp('/tmp/ah-codex-scoped-');
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  await writeFile(join(dir, 'token'), f.token, { mode: 0o600 });
+  const clientProfilePath = join(dir, 'client.json'),
+    address = { harness: 'codex', instance: 'local', sessionId: f.a };
+  await writeFile(
+    clientProfilePath,
+    JSON.stringify({
+      url: 'http://127.0.0.1:3211',
+      harness: 'codex',
+      enrollmentTokenFile: 'token',
+    }),
+    { mode: 0o600 },
+  );
+  const first = {
+      id: 'first',
+      callerId: 'agents',
+      harness: 'codex' as const,
+      instance: 'local',
+      enrollmentToken: f.token,
+    },
+    other = { ...first, id: 'other', enrollmentToken: 'other-enrollment-'.repeat(3) };
+  const service = new ConnectorService(f.hub, [first, other], {
+    inspect: async () => {
+      throw Error('Unused');
+    },
+  });
+  await service.disconnect({ profileId: first.id });
+  await service.disconnect({ profileId: other.id });
+  await assert.rejects(service.connect({ address, clientProfilePath }, 3211));
+  const enabled = async () =>
+    Object.fromEntries((await service.connections()).profiles.map((p) => [p.id, p.enabled]));
+  assert.deepEqual(await enabled(), { [first.id]: false, other: false });
+  f.rpc.handlers.set('config/read', () => ({
+    config: { mcp_servers: {} },
+    layers: [{ name: { type: 'user', file: '/private/config.toml' }, version: 'v1', config: {} }],
+  }));
+  f.rpc.handlers.set('config/value/write', () => ({ status: 'ok' }));
+  f.rpc.handlers.set('config/mcpServer/reload', () => ({}));
+  f.rpc.handlers.set('mcpServer/tool/call', () => ({ isError: true }));
+  await service.connect({ address, clientProfilePath }, 3211);
+  assert.deepEqual(await enabled(), { [first.id]: true, other: false });
+});
+
 test('owner connect validates profiles and requires current native identity, not historical bindings', async (t) => {
   const f = await fixture(t),
     dir = await mkdtemp('/tmp/ah-codex-onboarding-');

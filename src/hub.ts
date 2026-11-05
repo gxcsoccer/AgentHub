@@ -55,6 +55,7 @@ export class AgentHub {
   // Newest event sequence among removed messages. listMessages reports a gap
   // when a caller's cursor is older, because those changes can't be replayed.
   private removedThrough = 0;
+  private deliveryGuards: ((envelope: Envelope) => void)[] = [];
   constructor(
     adapters: Adapter[],
     private readonly options: {
@@ -81,6 +82,7 @@ export class AgentHub {
     try {
       const removed = options.store?.getMeta('messages:removed')?.sequence;
       if (typeof removed === 'number') this.removedThrough = removed;
+      const legacy: StoredReceipt[] = [];
       for (const saved of options.store?.load() ?? []) {
         if (saved.expires <= Date.now()) {
           options.store!.remove([saved.envelope.messageId]);
@@ -107,11 +109,17 @@ export class AgentHub {
             [saved],
           );
         }
+        if (saved.sequence === undefined) {
+          // Records from before 0.4.0. The message ID orders those sharing a sequence.
+          saved.sequence = Math.max(this.events.position.sequence, 1);
+          legacy.push(saved);
+        }
         this.entries.set(saved.envelope.messageId, {
           ...saved,
           promise: Promise.resolve(saved.receipt),
         });
       }
+      if (legacy.length) options.store!.save(legacy);
     } catch (error) {
       options.store?.close();
       throw error;
@@ -174,6 +182,10 @@ export class AgentHub {
   async ready(): Promise<void> {
     await this.initialization;
     this.healthy();
+  }
+  /** Trusted in-process hook. A throw refuses delivery after every earlier check. */
+  guardDelivery(guard: (envelope: Envelope) => void) {
+    this.deliveryGuards.push(guard);
   }
   /** Trusted in-process extension state, never exposed through the public API. */
   featureState(namespace: string): AdapterState {
@@ -504,6 +516,8 @@ export class AgentHub {
         );
       if (Date.parse(entry.envelope.expiresAt) <= Date.now())
         throw new HubError('expired', 'Message expired', 409);
+      // No await may follow this before adapter.send.
+      for (const guard of this.deliveryGuards) guard(entry.envelope);
     } catch (error) {
       this.apply(adapter, {
         messageId: entry.envelope.messageId,
@@ -707,25 +721,40 @@ export class AgentHub {
     this.prune();
     const { epoch, sequence } = this.events.position;
     let after = 0,
+      afterId = '',
       gap = false;
     if (query.cursor !== undefined) {
-      const match = /^([^:]+):(\d+)$/.exec(query.cursor);
+      const match = /^([^:]+):(\d+)(?::(.+))?$/.exec(query.cursor);
       if (!match || !Number.isSafeInteger(Number(match[2])))
         throw new HubError('invalid_cursor', 'Malformed message cursor');
       if (match[1] !== epoch || Number(match[2]) > sequence) gap = true;
       else {
         after = Number(match[2]);
+        afterId = match[3] ?? '\u{10ffff}';
         gap = after < this.removedThrough;
       }
     }
+    const position = (entry: Entry) => [entry.sequence ?? 0, entry.envelope.messageId] as const;
     const rows = [...this.entries.values()]
-      .filter((entry) => (entry.sequence ?? 0) > after)
-      .sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0));
+      .filter((entry) => {
+        if (query.cursor === undefined || gap) return true;
+        const [rowSequence, id] = position(entry);
+        return rowSequence > after || (rowSequence === after && id > afterId);
+      })
+      .sort((a, b) => {
+        const [aSequence, aId] = position(a),
+          [bSequence, bId] = position(b);
+        return aSequence - bSequence || (aId < bId ? -1 : aId > bId ? 1 : 0);
+      });
     const page = rows.slice(0, limit);
     const hasMore = rows.length > limit;
+    const last = page.at(-1);
     return {
       data: page.map(({ envelope, receipt }) => structuredClone({ envelope, receipt })),
-      nextCursor: `${epoch}:${hasMore ? page.at(-1)!.sequence : sequence}`,
+      // Messages can share a sequence, so a partial page also records the message ID.
+      nextCursor: hasMore
+        ? `${epoch}:${last!.sequence ?? 0}:${last!.envelope.messageId}`
+        : `${epoch}:${sequence}`,
       hasMore,
       gap,
     };

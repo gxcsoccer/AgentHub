@@ -535,6 +535,49 @@ test('reconnect restores an MCP session and a disabled profile, and other sessio
   await assert.rejects(f.service.reconnect({ profileId: 'missing' }), /Unknown/);
 });
 
+test('disconnect records are never evicted, and capacity refuses a new one', async (t) => {
+  const f = await fixture(t);
+  await f.service.disconnect({ address: f.b });
+  const state = f.hub.featureState('connectors'),
+    registry = state.get('registry')!;
+  const rows = registry.disconnected as Record<string, { address: unknown; at: string }>;
+  for (let i = 1; i < 4096; i++)
+    rows['entry' + i] = { address: f.a, at: '2026-12-01T00:00:00.000Z' };
+  state.set('registry', registry);
+  await assert.rejects(
+    f.service.disconnect({ address: { ...f.a, sessionId: randomUUID() } }),
+    /capacity/,
+  );
+  await assert.rejects(f.service.enroll(token, f.eb), { code: 'connector_disconnected' });
+});
+
+test('a disconnect during ask stops delivery at the boundary, including a late forward', async (t) => {
+  const f = await fixture(t);
+  const c = await f.service.enroll(token, f.ea);
+  await f.service.enroll(token, f.eb);
+  const getSession = f.adapter.getSession.bind(f.adapter);
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  let reads = 0;
+  f.adapter.getSession = async (address) => {
+    if (address.sessionId === f.b.sessionId && ++reads === 2) await gate;
+    return getSession(address);
+  };
+  const asking = f.service.call(c.token, f.ea, {
+    operation: 'ask',
+    messageId: randomUUID(),
+    to: f.b,
+    message: 'hello',
+    expiresAt: new Date(Date.now() + 60000).toISOString(),
+  });
+  while (reads < 2) await new Promise((resolve) => setTimeout(resolve, 1));
+  await f.service.disconnect({ address: f.b });
+  assert.equal(f.adapter.calls.length, 0);
+  release();
+  await assert.rejects(asking, { code: 'peer_not_connected' });
+  assert.equal(f.adapter.calls.length, 0);
+});
+
 test('connectedPeersOnly hides unbound, stale and disconnected sessions from peers and ask', async (t) => {
   const f = await fixture(t);
   const service = new ConnectorService(f.hub, f.profiles, {
