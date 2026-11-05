@@ -2,7 +2,7 @@
 
 [English](AGENT_CONNECTOR.md) · [现有架构](DESIGN.zh-CN.md) · [交付状态](ROADMAP.zh-CN.md)
 
-状态：**设计第 11 版，实施中：两端连接器、Codex MCP connect 与显式启用的 Claude CLI connect 已实现**。日期：2026-11-05。代码基线：`a3093b9ca5a29bc34238529f3271afa062d51cd4`。messageKind、Claude/Codex 原生登记、三个共享 MCP 工具、受限 Agent CLI、connections 与两端 connect 已实现但未发布；实际配置和限制见[接入说明](CONNECTOR_SETUP.zh-CN.md)。Claude 原生 MCP 外部 reload、安装器卸载/停用、手工绑定兜底与完整只读就绪诊断仍待实现。当前可用能力及测试证据分别见 [API](API.zh-CN.md) 和[验证记录](VERIFICATION.zh-CN.md)。
+状态：**设计第 11 版，实施中：两端连接器、Codex MCP connect 与显式启用的 Claude CLI connect 已实现**。日期：2026-11-05。代码基线：`a3093b9ca5a29bc34238529f3271afa062d51cd4`。messageKind、Claude/Codex 原生登记、三个共享 MCP 工具、受限 Agent CLI、connections 与两端 connect 已纳入 0.2.0；实际配置和限制见[接入说明](CONNECTOR_SETUP.zh-CN.md)。Claude 原生 MCP 外部 reload、安装器卸载/停用、手工绑定兜底与完整只读就绪诊断仍待实现。当前可用能力及测试证据分别见 [API](API.zh-CN.md) 和[验证记录](VERIFICATION.zh-CN.md)。
 
 ## 1. 决策与首版范围
 
@@ -236,7 +236,7 @@ v1 使用连接状态和每次 I/O 前的原生会话检查。后续若启用 30
 
 ## 6. adapter 的 request / result 渲染
 
-这是**阶段 1 的交付物，已在当前分支实现但未发布**。新增可选 `messageKind: 'request' | 'result'`，贯穿消息校验、SDK/OpenAPI、指纹、持久化、转发和两端 adapter。省略时保留旧调用语义；连接器调用必须显式设置。
+这是**阶段 1 的交付物，已纳入 0.2.0**。新增可选 `messageKind: 'request' | 'result'`，贯穿消息校验、SDK/OpenAPI、指纹、持久化、转发和两端 adapter。省略时保留旧调用语义；连接器调用必须显式设置。
 
 | 渲染/行为    | request                                                              | result                                                          |
 | ------------ | -------------------------------------------------------------------- | --------------------------------------------------------------- |

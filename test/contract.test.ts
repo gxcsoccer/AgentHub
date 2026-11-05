@@ -8,6 +8,10 @@ test('published unified OpenAPI matches runtime and preserves explicit delivery 
     openApi,
   );
   const spec = JSON.parse(JSON.stringify(openApi));
+  const metadata = JSON.parse(
+    await readFile(new URL('../../package.json', import.meta.url), 'utf8'),
+  );
+  assert.equal(spec.info.version, metadata.version);
   assert.deepEqual(spec.components.schemas.MessageInput.properties.delivery.enum, [
     'tool_output',
     'peer_message',

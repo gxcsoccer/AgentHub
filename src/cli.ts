@@ -14,6 +14,7 @@ import { ConnectorClient } from './connectors/client.js';
 import { openLocalHub } from './runtime.js';
 import { address, object, text } from './validation.js';
 import type { MessageInput } from './types.js';
+import { VERSION } from './version.js';
 
 async function main() {
   const { values, positionals } = parseArgs({
@@ -53,7 +54,7 @@ async function main() {
   });
   const command = positionals[0] ?? 'help';
   if (values.help || command === 'help') {
-    console.log(`AgentHub 0.1.0
+    console.log(`AgentHub ${VERSION}
 
   agenthub serve [--config FILE] [--port 3211] [--token-file FILE]
                   [--state-file FILE | --ephemeral] [--access-file FILE] [--connector-file FILE]

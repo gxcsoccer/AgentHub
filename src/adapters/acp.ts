@@ -22,6 +22,7 @@ import type {
   Submission,
 } from '../types.js';
 import { HubError, object, pageQuery, text, fingerprint } from '../validation.js';
+import { VERSION } from '../version.js';
 export interface AcpOptions {
   instance: string;
   command: string;
@@ -119,7 +120,7 @@ export class AcpAdapter extends EventEmitter implements Adapter {
             fs: { readTextFile: false, writeTextFile: false },
             terminal: false,
           },
-          clientInfo: { name: 'agenthub', version: '0.1.0' },
+          clientInfo: { name: 'agenthub', version: VERSION },
         },
         {
           cancellationSignal: AbortSignal.timeout(this.options.timeoutMs ?? 30000),

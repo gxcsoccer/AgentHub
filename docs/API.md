@@ -21,7 +21,7 @@ Addresses are opaque in the core. Codex/Claude adapters validate their native UU
 
 Messages require `messageId` (UUID), `to`, `origin.name`, `delivery`, and `text`. Optional fields: `origin.session`, `correlationId`, `inReplyTo`, `replyTo`, `expiresAt` (default one hour), `hopCount` (0–8). Origin is claimed provenance. Unknown fields are not forwarded. The first correlated reply is optionally forwarded once; the forward has a separate receipt.
 
-This branch adds optional `messageKind: "request" | "result"` consistently across HTTP, SDK and MCP send_message. Omission preserves legacy request behavior. Results reject replyTo, omit reply instructions in both adapters, and reject business replies at adapter and core boundaries. Transport evidence such as accepted/held/received still applies; waiting for replied cannot establish that a result was read. Automatic reply forwarding always uses result, retaining the original correlation and deadline. Kind participates in idempotency fingerprints; explicit managed user_input rejects this field. This change is not yet published to npm.
+Version 0.2.0 adds optional `messageKind: "request" | "result"` consistently across HTTP, SDK and MCP send_message. Omission preserves legacy request behavior. Results reject replyTo, omit reply instructions in both adapters, and reject business replies at adapter and core boundaries. Transport evidence such as accepted/held/received still applies; waiting for replied cannot establish that a result was read. Automatic reply forwarding always uses result, retaining the original correlation and deadline. Kind participates in idempotency fingerprints; explicit managed user_input rejects this field. See the changelog for upgrade requirements.
 
 HTTP 202 means the API produced a receipt, not that the model processed the message. Inspect `status`:
 
@@ -57,4 +57,4 @@ At most four instances run concurrently, capped at the first 32. Each discovery 
 
 See [Extensions](EXTENSIONS.md) for caller grants, durable event semantics, full-text search and explicit managed-session endpoints.
 
-Claude/Codex enrollment, shared collaboration operations, Codex MCP connect and opt-in Claude CLI connect are implemented on this unreleased branch. See [Connector setup](CONNECTOR_SETUP.md) for configuration and limits. Claude CLI activation uses native messages and existing Bash permissions and can start a model turn; external MCP reload remains unavailable.
+Claude/Codex enrollment, shared collaboration operations, Codex MCP connect and opt-in Claude CLI connect are available in 0.2.0. See [Connector setup](CONNECTOR_SETUP.md) for configuration and limits. Claude CLI activation uses native messages and existing Bash permissions and can start a model turn; external MCP reload remains unavailable.

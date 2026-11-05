@@ -6,6 +6,7 @@ import { CodexRpc, type Rpc } from '../../vendor/codex-bridge/src/rpc.js';
 import { sessionId } from '../../vendor/codex-bridge/src/errors.js';
 import { errorMessage, HubError, object, pageQuery, text, fingerprint } from '../validation.js';
 import { replyToolState } from './codex-readiness.js';
+import { VERSION } from '../version.js';
 import type {
   Adapter,
   Envelope,
@@ -214,12 +215,14 @@ export class CodexAdapter extends EventEmitter implements Adapter {
     const serverInfo =
       row.serverInfo && typeof row.serverInfo === 'object' ? object(row.serverInfo) : {};
     const version = typeof serverInfo.version === 'string' ? serverInfo.version : '';
+    const prefix = `${VERSION}+`;
+    const connectorConnectionId = version.startsWith(prefix) ? version.slice(prefix.length) : '';
     const tools = row.tools && typeof row.tools === 'object' ? object(row.tools) : {};
     if (
       row.runtimeStatus !== 'connected' ||
       serverInfo.name !== 'agenthub-connector' ||
-      !/^0\.1\.0\+[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(version) ||
-      (connectionId !== undefined && version !== `0.1.0+${connectionId}`) ||
+      !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(connectorConnectionId) ||
+      (connectionId !== undefined && connectorConnectionId !== connectionId) ||
       !['list_peers', 'ask_agent', 'reply_agent'].every((name) =>
         Object.values(tools).some((value) => object(value).name === name),
       )
@@ -239,7 +242,7 @@ export class CodexAdapter extends EventEmitter implements Adapter {
     info.metadata = {
       ...info.metadata,
       connectorServer: serverName,
-      connectorConnectionId: version.slice(6),
+      connectorConnectionId,
     };
     return info;
   }

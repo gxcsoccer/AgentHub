@@ -21,7 +21,7 @@
 
 消息必填 `messageId`（UUID）、`to`、`origin.name`、`delivery`、`text`。可选 `origin.session`、`correlationId`、`inReplyTo`、`replyTo`、`expiresAt`（默认一小时）、`hopCount`（0–8）。来源是归因信息，不是远程身份认证。未知字段不传给后端。可选回复路由只转发首个关联回复，转发拥有独立回执。
 
-本分支新增可选 `messageKind: "request" | "result"`，HTTP、SDK 和 MCP `send_message` 共用语义；省略时保留原有请求行为。`result` 不允许 `replyTo`，两端渲染省略回复模板，adapter 和核心均拒绝针对结果的业务回复。结果仍能记录 accepted、held、received 等投递证据，不能以等待 replied 判断结果已读。自动回复转发总是使用 result，并保留原请求的关联及期限。messageKind 参与幂等指纹；显式托管 user_input 不接受此字段。此改动尚未发布到 npm。
+0.2.0 新增可选 `messageKind: "request" | "result"`，HTTP、SDK 和 MCP `send_message` 共用语义；省略时保留原有请求行为。`result` 不允许 `replyTo`，两端渲染省略回复模板，adapter 和核心均拒绝针对结果的业务回复。结果仍能记录 accepted、held、received 等投递证据，不能以等待 replied 判断结果已读。自动回复转发总是使用 result，并保留原请求的关联及期限。messageKind 参与幂等指纹；显式托管 user_input 不接受此字段。升级要求见变更记录。
 
 HTTP 202 只表示返回了回执，必须检查其状态：
 
@@ -57,4 +57,4 @@ SSE 的 `message.status` 包含回执快照，`adapter.event` 包含当前连接
 
 新增调用方权限、持久事件语义、全文检索和显式托管接口见[扩展说明](EXTENSIONS.zh-CN.md)。
 
-Claude/Codex 原生登记、共享协作操作、Codex MCP connect 及显式启用的 Claude CLI connect 已在当前分支实现（未发布）；安装步骤和边界见[连接器接入](CONNECTOR_SETUP.zh-CN.md)。Claude CLI 激活经原生消息和现有 Bash 权限完成，可能启动模型轮次；原生 MCP 外部 reload 仍未实现。
+Claude/Codex 原生登记、共享协作操作、Codex MCP connect 及显式启用的 Claude CLI connect 已纳入 0.2.0；安装步骤和边界见[连接器接入](CONNECTOR_SETUP.zh-CN.md)。Claude CLI 激活经原生消息和现有 Bash 权限完成，可能启动模型轮次；原生 MCP 外部 reload 仍未实现。

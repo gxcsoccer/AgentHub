@@ -3,6 +3,7 @@ import { promisify } from 'node:util';
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import assert from 'node:assert/strict';
 const exec = promisify(execFile),
   directory = await mkdtemp(join(tmpdir(), 'ah-package-'));
 const node = process.argv[2] ?? process.execPath;
@@ -41,6 +42,7 @@ try {
     import { join } from 'node:path';
     import { once } from 'node:events';
     const core = await import(${JSON.stringify(metadata.name)});
+    assert.equal(core.openApi.info.version, ${JSON.stringify(metadata.version)});
     assert.equal(typeof core.ConnectorService, 'function');
     assert.equal(typeof core.ConnectorClient, 'function');
     const mcp = await import(${JSON.stringify(metadata.name + '/mcp')});
@@ -59,14 +61,21 @@ try {
   `,
   );
   const result = await exec(node, ['verify.mjs'], { cwd: directory, timeout: 20000 });
-  for (const file of Object.values(metadata.bin))
-    await exec(node, [join(directory, 'node_modules', metadata.name, file), '--help'], {
-      cwd: directory,
-      timeout: 10000,
-    });
+  for (const [name, file] of Object.entries(metadata.bin)) {
+    const help = await exec(
+      node,
+      [join(directory, 'node_modules', metadata.name, file), '--help'],
+      {
+        cwd: directory,
+        timeout: 10000,
+      },
+    );
+    if (name === 'agenthub') assert(help.stdout.startsWith(`AgentHub ${metadata.version}\n`));
+  }
   console.log(
     JSON.stringify({
       package: metadata.name,
+      version: metadata.version,
       bytes: info.size,
       files: info.files.length,
       binaries: Object.keys(metadata.bin),

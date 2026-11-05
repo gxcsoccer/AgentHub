@@ -1,6 +1,10 @@
 # Verification
 
-## 2026-11-05: Claude CLI activation and mixed transports (unreleased)
+## 0.2.0 release verification (2026-11-05)
+
+`npm run check` passes 215 tests (151 unified, 41 retained Codex Bridge, 23 runner-safety); coverage is 96.99% lines, 88.83% branches and 94.93% functions. Package installation verifies five exports, both binaries, version metadata, HTTP, SQLite and empty event cursor recovery. The 0.2.0 Codex MCP / Claude CLI isolated run passes all eight checks, including both request/reply/result directions, loaded peer discovery and cleanup. Native versions remain macOS Codex 0.166.0 / Claude 2.1.318. No working sessions are used. Private reports are kept under ignored `.local/verification/release-0.2.0-*`.
+
+## 2026-11-05: Claude CLI activation and mixed transports (0.2.0)
 
 `npm run check` passed **130 main-project + 41 Bridge + 21 test-process safety checks: 192 total**, with **96.95% / 88.10% / 94.99%** main-project line/branch/function coverage. `npm run test:package` passed temporary installation, exports, CLIs, HTTP and SQLite checks. New contracts cover process ancestry/start identity, UUID changes, credential separation/revocation, activation correlation, text replies not establishing readiness, expiry/explicit retry, discovery failure not committing readiness, and restricted CLI entry points with inferred origins.
 
@@ -16,7 +20,7 @@ Private 0600 reports: `.local/verification/connector-claude-cli-live.json` and `
 
 Scope: this is model-driven activation explicitly enabled with `transport: cli`, subject to existing permissions, not Claude external MCP reload or a guarantee of permission-free access. The independent user turn finishes before result arrival; graceful restart does not prove forced-crash recovery. Real busy activation, full concurrency/deadline matrices, queued-before-clear, Linux/Windows/desktop/SDK remain unaccepted. Connector registry version 3 reads versions 1/2; activation metadata has version 1, while core message storage remains schema 3. Activation records are bounded at 256; automatic collection is pending. See [setup](CONNECTOR_SETUP.md).
 
-## 2026-11-05: Codex connector and unified connect (partial phase 3, unreleased)
+## 2026-11-05: Codex connector and unified connect (partial phase 3, 0.2.0)
 
 `npm run check` passed 124 main-project tests, 41 Bridge tests and 21 test-process safety checks: **186 total**, with **96.80% / 88.17% / 94.80%** main-project line/branch/function coverage. New coverage includes per-call identity and connection nonce verification, concurrent identities in one MCP process, configuration version conflicts, repeated onboarding, the read-only handshake and rejection of historical bindings as current readiness. `npm run test:package` passed temporary package installation, public exports, CLIs, HTTP and SQLite recovery.
 
@@ -35,7 +39,7 @@ The runner used only an independent App Server/home/socket and a fresh Claude PT
 
 This covers idle roots and the listed versions, not busy Codex reload, CLI/TUI/desktop entry points, other platforms or external automatic activation of arbitrary existing Claude sessions. Reload affects the entire App Server instance. Owners must still prepare connector profiles and caller grants; automatic profile generation, uninstall and full readiness diagnostics remain pending. See [setup](CONNECTOR_SETUP.md).
 
-## 2026-11-05: Claude connector core (phase 2, unreleased)
+## 2026-11-05: Claude connector core (phase 2, 0.2.0)
 
 `npm run check` passed 119 main-project tests, 41 Bridge tests and 21 test-process safety checks: **181 total**. Main-project line/branch/function coverage is **96.96% / 88.84% / 94.55%**. New coverage includes process identity, credential separation, SQLite reopen, native-directory changes, pagination/capacity limits, ambiguous names, revocation, cross-session reply rejection, CLI configuration and the official MCP client roundtrip.
 
@@ -47,7 +51,7 @@ Models were authorized only for the three test MCP tools, with no shell/file too
 
 This is not external automatic activation of arbitrary existing sessions. The user-turn case completes before result delivery, not every busy interleaving. Restart was graceful, not connector SIGKILL acceptance. Linux has process-reader fixtures only. Other hosts/platforms, queued-before-clear, real PID reuse and the complete concurrency/deadline matrix remain pending. See [configuration and limits](CONNECTOR_SETUP.md).
 
-## 2026-11-05: connector phase 1 (unreleased)
+## 2026-11-05: connector phase 1 (0.2.0)
 
 At phase-1 acceptance, feat/agent-connector implemented messageKind, result rendering in both adapters, ingress/core guards and schema 3 compatibility. Automatic enrollment, minimal tools and connect were unimplemented at that point; see phase 2 above for subsequent work. This section covers the new implementation; historical evidence below retains its original scope.
 

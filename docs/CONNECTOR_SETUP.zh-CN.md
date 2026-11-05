@@ -1,4 +1,4 @@
-# 会话连接器（当前分支，尚未发布）
+# 会话连接器（0.2.0）
 
 [English](CONNECTOR_SETUP.md) · [设计](AGENT_CONNECTOR.zh-CN.md)
 
@@ -8,7 +8,7 @@
 
 ## 配置与启动
 
-从当前工作树 `npm run build` 后，将以下命令中的 `agenthub` 替换成 `node /ABS/AgentHub/dist/src/cli.js`；npm 已发布的 0.1.0 不含这些新功能。配置和 token 文件都必须是当前用户拥有的普通文件、权限 `0600`；目录建议 `0700`。所有路径示例均需替换。
+安装 `npm install -g @gxcsoccer/agenthub@0.2.0`。使用源码时，从工作树运行 `npm run build` 后，将以下命令中的 `agenthub` 替换成 `node /ABS/AgentHub/dist/src/cli.js`。Hub 和连接器进程需同步升级。配置和 token 文件都必须是当前用户拥有的普通文件、权限 `0600`；目录建议 `0700`。所有路径示例均需替换。
 
 1. 所有者生成三个不同的随机 token，分别存入 `owner.token`、`agents-api.token` 和 `enrollment.token`。使用至少 32 字符的随机值，例如 `node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"`。后两个文件用途不同；Agent 只获得 enrollment 凭证。
 2. `hub.json` 启用 Claude 原生消息，暂不启用 Codex：

@@ -30,6 +30,8 @@ npm install -g @gxcsoccer/agenthub
 agenthub --help
 ```
 
+0.2.0 新增会话连接器和统一 `connect`。升级前请停止 Hub 并备份状态目录；旧版无法读取迁移后的状态。连接器进程需与 Hub 同步升级。详见[升级说明](CHANGELOG.md#upgrade-notes--升级说明)。
+
 ## 启动
 
 需要 Node.js 22.13+，以及已运行的 Codex App Server 和/或 Claude Code。真实验证平台为 macOS；Windows 客户端、ACP 及实验性单向 pipe 的范围见[扩展说明](docs/EXTENSIONS.zh-CN.md)。
@@ -96,7 +98,7 @@ try {
 
 其他应用使用 `@gxcsoccer/agenthub/client` 中的 `AgentHubClient` 访问本地服务；该导出仅依赖 fetch。CLI/MCP 共用守护进程中的回执和回调监听。
 
-消息可指定 `replyTo`，将第一条关联回复转发到指定会话。转发有独立消息 ID，保留 `inReplyTo`，增加跳数，以 `messageKind: "result"` 投递，不再提供回复模板或回复路由；结果回执保留投递证据，不等待 replied。此分支改动尚未发布。原回执包含 `forwardedMessageId` 和可能的 `forwardError`。
+消息可指定 `replyTo`，将第一条关联回复转发到指定会话。转发有独立消息 ID，保留 `inReplyTo`，增加跳数，以 `messageKind: "result"` 投递，不再提供回复模板或回复路由；结果回执保留投递证据，不等待 replied。0.2.0 包含此行为。原回执包含 `forwardedMessageId` 和可能的 `forwardError`。
 
 Codex 回复需要所有者在创建会话时注册导出的 `codexReplyTool`。`getSession()` 返回 `replyReadiness`：`ready`、`needs_attach`、`missing_tool`、`unknown` 或 `unavailable`。工具注册根据本地会话元数据核验；日志尚未持久化或无法读取时保持 unknown。发送和重连不自动建立监听。断连或 Hub 重启后，所有者可显式执行下面的 attach：仅接受已加载、工具已核验的根会话，不传配置覆盖；调用方明确接受 loaded 检查与上游 thread/resume 之间发生卸载可能恢复会话的竞态。不能动态为任意已有会话安装工具。
 
@@ -136,4 +138,4 @@ MIT，保留原 Codex Bridge 署名。
 
 [新增权限、持久事件、全文检索、ACP 与 Windows 范围](docs/EXTENSIONS.zh-CN.md)。
 
-Claude/Codex 原生登记、共享协作操作、Codex MCP connect 及显式启用的 Claude CLI connect 已在当前分支实现（未发布）；安装步骤和边界见[连接器接入](docs/CONNECTOR_SETUP.zh-CN.md)。Claude CLI 激活经原生消息和现有 Bash 权限完成，可能启动模型轮次；原生 MCP 外部 reload 仍未实现。
+Claude/Codex 原生登记、共享协作操作、Codex MCP connect 及显式启用的 Claude CLI connect 已纳入 0.2.0；安装步骤和边界见[连接器接入](docs/CONNECTOR_SETUP.zh-CN.md)。Claude CLI 激活经原生消息和现有 Bash 权限完成，可能启动模型轮次；原生 MCP 外部 reload 仍未实现。

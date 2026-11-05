@@ -30,6 +30,8 @@ npm install -g @gxcsoccer/agenthub
 agenthub --help
 ```
 
+0.2.0 adds session connectors and unified `connect`. Before upgrading, stop the Hub and back up its state directory; older versions cannot read the migrated state. Upgrade connector processes with the Hub. See [upgrade notes](CHANGELOG.md#upgrade-notes--升级说明).
+
 ## Run from source
 
 Requirements: Node.js 22.13+, an already running Codex App Server and/or Claude Code. Unix socket integration is validated on macOS; Windows clients/managed ACP and experimental one-way native pipes are described in [Extensions](docs/EXTENSIONS.md).
@@ -99,7 +101,7 @@ try {
 
 For a separate application, import `AgentHubClient` from `@gxcsoccer/agenthub/client` and connect to the daemon. This fetch-only entry point does not import Node transports. The daemon keeps receipts and callback listeners alive across CLI/MCP calls.
 
-Optional `replyTo` routes the first correlated reply to another explicit session. Forwarding uses a fresh message ID, preserves `inReplyTo`/correlation, increments the hop count, and uses `messageKind: "result"` without reply instructions or another reply route. Result receipts retain transport evidence rather than waiting for replied. This branch change is not yet published. Check `forwardedMessageId` and `forwardError` on the original receipt.
+Optional `replyTo` routes the first correlated reply to another explicit session. Forwarding uses a fresh message ID, preserves `inReplyTo`/correlation, increments the hop count, and uses `messageKind: "result"` without reply instructions or another reply route. Result receipts retain transport evidence rather than waiting for replied. Available in 0.2.0. Check `forwardedMessageId` and `forwardError` on the original receipt.
 
 For Codex replies, the owner must register exported `codexReplyTool` when creating the session. `getSession()` reports `replyReadiness`: `ready`, `needs_attach`, `missing_tool`, `unknown`, or `unavailable`. Registration is checked against local session metadata; an unpersisted or inaccessible rollout remains unknown. Sending and reconnecting do not attach a listener. Owners can explicitly attach with the command below after a disconnect or Hub restart. It requires a loaded root with a verified tool, passes no configuration overrides, and acknowledges that an unload between the check and upstream `thread/resume` can cause a cold resume. Arbitrary live tool installation is not supported.
 
@@ -139,4 +141,4 @@ MIT. Original Codex Bridge attribution is preserved.
 
 [Authorization, durable replay, search, ACP and Windows scope](docs/EXTENSIONS.md).
 
-Claude/Codex enrollment, shared collaboration operations, Codex MCP connect and opt-in Claude CLI connect are implemented on this unreleased branch. See [Connector setup](docs/CONNECTOR_SETUP.md) for configuration and limits. Claude CLI activation uses native messages and existing Bash permissions and can start a model turn; external MCP reload remains unavailable.
+Claude/Codex enrollment, shared collaboration operations, Codex MCP connect and opt-in Claude CLI connect are available in 0.2.0. See [Connector setup](docs/CONNECTOR_SETUP.md) for configuration and limits. Claude CLI activation uses native messages and existing Bash permissions and can start a model turn; external MCP reload remains unavailable.

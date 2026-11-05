@@ -2,6 +2,7 @@ import { McpServer } from '@modelcontextprotocol/server';
 import { StdioServerTransport } from '@modelcontextprotocol/server/stdio';
 import * as z from 'zod/v4';
 import type { ConnectorClient } from './client.js';
+import { VERSION } from '../version.js';
 async function result(action: () => Promise<unknown>) {
   try {
     const value = await action();
@@ -26,7 +27,7 @@ async function result(action: () => Promise<unknown>) {
 export function createConnectorMcpServer(client: ConnectorClient) {
   const server = new McpServer({
     name: 'agenthub-connector',
-    version: `0.1.0+${client.connectionId}`,
+    version: `${VERSION}+${client.connectionId}`,
   });
   server.registerTool(
     'list_peers',

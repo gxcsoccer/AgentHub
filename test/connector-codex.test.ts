@@ -13,6 +13,7 @@ import { CodexAdapter } from '../src/adapters/codex.js';
 import { ConnectorService } from '../src/connectors/service.js';
 import { FakeRpc, testToken } from './helpers.js';
 import type { SessionInfo } from '../src/types.js';
+import { VERSION } from '../src/version.js';
 
 async function fixture(t: test.TestContext, scoped = false) {
   const a = randomUUID(),
@@ -21,6 +22,7 @@ async function fixture(t: test.TestContext, scoped = false) {
     rpc = new FakeRpc();
   let active: string[] = [a, b];
   let nonce: string = connectionId;
+  let version = VERSION;
   let child = false;
   rpc.handlers.set('thread/loaded/list', () => ({ data: active, nextCursor: null }));
   rpc.handlers.set('thread/list', () => ({
@@ -40,7 +42,7 @@ async function fixture(t: test.TestContext, scoped = false) {
       {
         name: 'agenthub',
         runtimeStatus: 'connected',
-        serverInfo: { name: 'agenthub-connector', version: '0.1.0+' + nonce },
+        serverInfo: { name: 'agenthub-connector', version: version + '+' + nonce },
         tools: Object.fromEntries(
           ['list_peers', 'ask_agent', 'reply_agent'].map((name) => [name, { name }]),
         ),
@@ -105,9 +107,26 @@ async function fixture(t: test.TestContext, scoped = false) {
     evidence,
     setActive: (ids: string[]) => (active = ids),
     setNonce: (id: string) => (nonce = id),
+    setVersion: (value: string) => (version = value),
     setChild: () => (child = true),
   };
 }
+test('Codex connector identity requires the current package version and a complete connection UUID', async (t) => {
+  const f = await fixture(t);
+  const target = { harness: 'codex', instance: 'local', sessionId: f.a };
+  const current = await f.adapter.connectorSession(target, 'agenthub', f.evidence().connectionId);
+  assert.equal(current.metadata?.connectorConnectionId, f.evidence().connectionId);
+  for (const version of ['0.1.0', '99.0.0', `${VERSION}-other`]) {
+    f.setVersion(version);
+    await assert.rejects(f.adapter.connectorSession(target, 'agenthub'), /does not match/);
+  }
+  f.setVersion(VERSION);
+  for (const nonce of ['bad-id', `${f.evidence().connectionId}+extra`]) {
+    f.setNonce(nonce);
+    await assert.rejects(f.adapter.connectorSession(target, 'agenthub'), /does not match/);
+  }
+});
+
 test('Codex peer discovery pages loaded roots independently of historical threads and resolves aliases', async (t) => {
   const f = await fixture(t),
     child = randomUUID(),
@@ -443,7 +462,9 @@ test('official MCP transport keeps concurrent Codex call identities separate and
       },
     }),
   );
-  f.setNonce(client.getServerVersion()!.version.slice(6));
+  const serverVersion = client.getServerVersion()!.version;
+  assert(serverVersion.startsWith(`${VERSION}+`));
+  f.setNonce(serverVersion.slice(VERSION.length + 1));
   assert((await client.callTool({ name: 'list_peers', arguments: {} })).isError);
   const responses = await Promise.all(
     [f.a, f.b].map((id, i) =>

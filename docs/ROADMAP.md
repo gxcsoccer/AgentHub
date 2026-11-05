@@ -2,7 +2,7 @@
 
 [简体中文](ROADMAP.zh-CN.md)
 
-`@gxcsoccer/agenthub@0.1.0` is published on npm with matching [GitHub release assets](https://github.com/gxcsoccer/AgentHub/releases/tag/v0.1.0). Post-release changes are reviewed through a PR; they are not yet another published package version.
+The `@gxcsoccer/agenthub@0.2.0` release includes PRs #1 and #2, with matching [GitHub release assets](https://github.com/gxcsoccer/AgentHub/releases/tag/v0.2.0). See the [changelog](../CHANGELOG.md) for upgrade requirements and retained capability boundaries.
 
 | Work group                    | Implementation and evidence                                                                                                                                         | Boundary                                                                                     |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
@@ -21,9 +21,9 @@ Durable consumer groups, full-history indexing and hot policy updates are option
 
 ## Automatic agent connections (implementation underway)
 
-The [revision-11 design proposal](AGENT_CONNECTOR.md) is being implemented: this branch implements shared Claude/Codex tools and enrollment; Codex connect and bidirectional live acceptance pass, with opt-in Claude CLI activation now implemented and native MCP external reload still unavailable. [Native identity experiments](SESSION_IDENTITY_EXPERIMENT.md) verified Claude startup IDs, stale environments after clear and Codex per-call identity. V1 proposes automatic enrollment on accepted hosts, manual fallback, one implicit team and disambiguated name addresses. Planned order:
+The [revision-11 design proposal](AGENT_CONNECTOR.md) is being implemented: 0.2.0 implements shared Claude/Codex tools and enrollment; Codex connect and bidirectional live acceptance pass, with opt-in Claude CLI activation now implemented and native MCP external reload still unavailable. [Native identity experiments](SESSION_IDENTITY_EXPERIMENT.md) verified Claude startup IDs, stale environments after clear and Codex per-call identity. V1 proposes automatic enrollment on accepted hosts, manual fallback, one implicit team and disambiguated name addresses. Planned order:
 
-1. Implemented on this unreleased branch: request/result rendering in both adapters, ingress/core guards, schema 3 protection and legacy-message compatibility.
+1. Included in 0.2.0: request/result rendering in both adapters, ingress/core guards, schema 3 protection and legacy-message compatibility.
 2. Claude native enrollment, lifecycle refresh, name disambiguation, three tools and optional deadlines are implemented with nine live checks. Manual fallback, full diagnostics and remaining fault acceptance are pending.
 3. Bidirectional Codex/Claude collaboration and Codex setup/activation pass. Disable/uninstall, full diagnostics, compatibility and fault acceptance remain.
 

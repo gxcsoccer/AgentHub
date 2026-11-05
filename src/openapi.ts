@@ -1,4 +1,5 @@
 import type { Json } from './types.js';
+import { VERSION } from './version.js';
 const string = { type: 'string' };
 const ref = (name: string) => ({ $ref: `#/components/schemas/${name}` });
 const object = (properties: Json, required: string[] = []) => ({
@@ -231,7 +232,7 @@ export const openApi = {
   openapi: '3.1.0',
   info: {
     title: 'AgentHub',
-    version: '0.1.0',
+    version: VERSION,
     description:
       'Local session communication. Explicit native semantics; no implicit resume, user-input fallback, or automatic write retry.',
   },

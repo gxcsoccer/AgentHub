@@ -2,6 +2,7 @@ import { McpServer } from '@modelcontextprotocol/server';
 import { StdioServerTransport } from '@modelcontextprotocol/server/stdio';
 import * as z from 'zod/v4';
 import { AgentHubClient } from './client.js';
+import { VERSION } from './version.js';
 export { createConnectorMcpServer, serveConnectorMcp } from './connectors/mcp.js';
 
 const scope = z.object({
@@ -36,7 +37,7 @@ async function result(action: () => Promise<unknown>) {
   }
 }
 export function createMcpServer(client: AgentHubClient, originName = 'AgentHub MCP') {
-  const server = new McpServer({ name: 'agenthub', version: '0.1.0' });
+  const server = new McpServer({ name: 'agenthub', version: VERSION });
   const read = { readOnlyHint: true, destructiveHint: false, openWorldHint: false };
   server.registerTool(
     'list_instances',

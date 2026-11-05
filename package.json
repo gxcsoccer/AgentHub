@@ -1,6 +1,6 @@
 {
   "name": "@gxcsoccer/agenthub",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "One API across coding harnesses: existing sessions, messages and explicit delivery semantics.",
   "type": "module",
   "license": "MIT",
@@ -43,6 +43,7 @@
     "examples",
     "README.md",
     "README.zh-CN.md",
+    "CHANGELOG.md",
     "LICENSE",
     "NOTICE"
   ],

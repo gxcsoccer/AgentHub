@@ -1,4 +1,4 @@
-# Session connectors (unreleased branch)
+# Session connectors (0.2.0)
 
 [简体中文](CONNECTOR_SETUP.zh-CN.md) · [Design](AGENT_CONNECTOR.md)
 
@@ -8,7 +8,7 @@ The first Claude configuration loads MCP **at startup**. Existing Claude CLI ses
 
 ## Configuration
 
-Run `npm run build` and replace `agenthub` below with `node /ABS/AgentHub/dist/src/cli.js`. Published npm version 0.1.0 does not contain this functionality. Replace all example paths. Configuration/token files must be regular files owned by the current user with mode `0600`; use private directories (`0700`).
+Install `npm install -g @gxcsoccer/agenthub@0.2.0`. For a source checkout, run `npm run build` and replace `agenthub` below with `node /ABS/AgentHub/dist/src/cli.js`. Upgrade the Hub and its connector processes together. Replace all example paths. Configuration/token files must be regular files owned by the current user with mode `0600`; use private directories (`0700`).
 
 Generate three distinct random credentials of at least 32 characters for `owner.token`, `agents-api.token` and `enrollment.token`, for example with `node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"`. Only the enrollment credential goes to the agent helper.
 

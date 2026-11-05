@@ -1,6 +1,13 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 — 2026-11-05
+
+- Add native Claude/Codex connector enrollment, three shared MCP tools (`list_peers`, `ask_agent`, `reply_agent`) and a restricted Agent CLI with verified session identity.
+- Add owner-driven `agenthub connect`: Codex installs/reloads MCP and verifies a read-only handshake; opt-in Claude CLI activation uses native peer messages and existing Bash permissions. Private profiles and explicit grants remain required.
+- Separate request/result rendering throughout the API, SDK, adapters, forwarding and persistence. Results omit reply instructions; expired connector replies are rejected.
+- Discover loaded Codex peers independently of historical sessions. Preserve caller grants, disambiguated names and explicit discovery gaps.
+- Persist activation attempts and retired IDs, bound retries and retention, and refresh short-lived connector credentials without retrying uncertain delivery.
+- Read CLI, MCP, ACP and OpenAPI versions from the package manifest, including strict same-version Codex connector handshakes.
 
 - Add opt-in real Claude/Codex ACP acceptance, independent App Server tests and a native-version matrix with isolated cleanup.
 - Validate Claude Code 2.1.317 alongside 2.1.318; preserve explicit opt-in and reject other versions. Report the cached installed CLI version explicitly; do not claim it verifies the target process.
@@ -9,6 +16,16 @@
 - Clarify ACP daemon restart recovery and the instance-wide creation availability boundary of `manage` grants.
 - Extend Linux/macOS CI to Node 26 and provide a manually dispatched sustained synthetic soak with a separate report path.
 - Correct published-package documentation and document real-model reply limits and reproducible acceptance commands.
+
+### Upgrade notes / 升级说明
+
+Stop the Hub and back up its state directory before upgrading from 0.1.0. Core SQLite storage migrates to schema 3; CLI activation metadata migrates to version 2. Older binaries refuse these newer formats. To roll back, stop the new Hub and restore the pre-upgrade copy. Upgrade the Hub and its connector processes together; Codex MCP handshakes require the same package version. Keep enrollment tokens and business credentials private.
+
+从 0.1.0 升级前，请停止 Hub 并备份状态目录。核心 SQLite 自动迁移至 schema 3，CLI 激活元数据迁移至 v2；旧版程序会拒绝新格式。回退时应停止新版 Hub，再恢复升级前的备份。Hub 与连接器进程需同步升级；Codex MCP 握手要求版本一致。登记凭据和业务凭据应继续保密保存。
+
+本版新增 Claude/Codex 原生登记、共享协作工具与受限 Agent CLI，统一 `connect` 接入，以及请求/结果消息语义。Codex reload 作用于整个实例；Claude CLI 激活可能启动模型轮次，并遵守现有 Bash 权限。首次接入仍需所有者准备 profile 和授权；Claude 外部动态 MCP reload、Windows 原生完整接入及豆包不在本版新增能力中。
+
+Validation details and actual isolated native acceptance boundaries are recorded in [English](docs/VERIFICATION.md) and [中文](docs/VERIFICATION.zh-CN.md).
 
 ## 0.1.0
 

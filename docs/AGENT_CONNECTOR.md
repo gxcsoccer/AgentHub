@@ -2,7 +2,7 @@
 
 [简体中文](AGENT_CONNECTOR.zh-CN.md) · [Current architecture](DESIGN.md) · [Delivery status](ROADMAP.md)
 
-Status: **revision 11, implementation underway: both connectors, Codex MCP connect and opt-in Claude CLI connect implemented**. Date: 2026-11-05. Code baseline: `a3093b9ca5a29bc34238529f3271afa062d51cd4`. messageKind, Claude/Codex enrollment, three shared MCP tools, restricted Agent CLI, basic connections diagnostics and both connect paths are implemented but unreleased. See [setup](CONNECTOR_SETUP.md) for actual configuration and limits. Claude native MCP external reload, installer uninstall/disable, manual binding fallback and full read-only readiness diagnostics remain pending. See [API](API.md) and [Verification](VERIFICATION.md) for existing behavior and evidence.
+Status: **revision 11, implementation underway: both connectors, Codex MCP connect and opt-in Claude CLI connect implemented**. Date: 2026-11-05. Code baseline: `a3093b9ca5a29bc34238529f3271afa062d51cd4`. messageKind, Claude/Codex enrollment, three shared MCP tools, restricted Agent CLI, basic connections diagnostics and both connect paths are included in 0.2.0. See [setup](CONNECTOR_SETUP.md) for actual configuration and limits. Claude native MCP external reload, installer uninstall/disable, manual binding fallback and full read-only readiness diagnostics remain pending. See [API](API.md) and [Verification](VERIFICATION.md) for existing behavior and evidence.
 
 ## 1. Decision and V1 scope
 
@@ -234,7 +234,7 @@ V1 uses connection state and native-session checks before I/O. If later versions
 
 ## 6. Adapter request/result rendering
 
-This **phase-1 deliverable is implemented on the current branch, unreleased**. The optional messageKind: 'request' | 'result' now flows through validation, SDK/OpenAPI, fingerprints, storage, forwarding and both adapters. Omission retains legacy behavior; connector messages set it explicitly.
+This **phase-1 deliverable is included in 0.2.0**. The optional messageKind: 'request' | 'result' now flows through validation, SDK/OpenAPI, fingerprints, storage, forwarding and both adapters. Omission retains legacy behavior; connector messages set it explicitly.
 
 | Rendering / behavior  | request                                                                          | result                                                                                       |
 | --------------------- | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
