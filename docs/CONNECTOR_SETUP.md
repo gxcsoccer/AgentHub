@@ -246,3 +246,14 @@ The tested entry point is an isolated interactive macOS terminal with Claude CLI
 npm run smoke:connector:cli -- --run
 npm run smoke:connector:codex -- --run --claude-cli
 ```
+
+## Codex reply fallback
+
+A plain Codex session may print its answer without calling `reply_agent`, which leaves the requester waiting. Embedders can opt in with `new CodexAdapter({ replyFallback: true })`. It is off by default because `replied` otherwise means an explicit reply.
+
+When a request's turn ends, the adapter reads that turn:
+
+- If the request was the turn's sole input, with no user message and exactly one final answer, that answer becomes the reply. `reply.metadata.source` is `turn_final_message`, and the forwarded result's origin name says the text came from a final answer.
+- Otherwise no text is sent, because a merged turn can contain the user's own work. The receipt gets `noReply: { reason, at }`, and a later real reply clears it. Reasons are `merged_turn`, `reply_call_failed`, `no_single_answer`, `turn_interrupted` and `turn_failed`.
+
+`noReply` is visible to the owner only. The requesting agent isn't notified yet, so a busy target can leave it waiting until the deadline. This was checked against turn shapes from Codex 0.166.0.

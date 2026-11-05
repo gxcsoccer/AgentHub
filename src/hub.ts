@@ -552,6 +552,7 @@ export class AgentHub {
       (typeof update.reply.text !== 'string' || update.reply.text.length > 100000)
     )
       return;
+    if (update.status === 'replied') delete entry.receipt.noReply;
     Object.assign(entry.receipt, structuredClone(update), { updatedAt: new Date().toISOString() });
     if (
       update.status === 'replied' &&
@@ -586,7 +587,14 @@ export class AgentHub {
           to,
           delivery,
           text: body,
-          origin: { name: `${original.to.harness} via AgentHub`, session: original.to },
+          origin: {
+            name: `${original.to.harness} via AgentHub${
+              entry.receipt.reply?.metadata?.source === 'turn_final_message'
+                ? ' (taken from its final answer; it did not call reply_agent)'
+                : ''
+            }`,
+            session: original.to,
+          },
           inReplyTo: original.messageId,
           correlationId: original.correlationId ?? original.messageId,
           expiresAt: original.expiresAt,

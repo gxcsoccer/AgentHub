@@ -245,3 +245,14 @@ agenthub agent --connector-profile /ABS/client.json reply --request REQUEST_UUID
 npm run smoke:connector:cli -- --run
 npm run smoke:connector:codex -- --run --claude-cli
 ```
+
+## Codex 回复兜底
+
+普通 Codex 会话可能只打印答案而不调用 `reply_agent`，发起方就会一直等。嵌入方可以用 `new CodexAdapter({ replyFallback: true })` 打开兜底。它默认关闭，因为默认情况下 `replied` 表示对方明确回复过。
+
+请求所在的一轮结束时，适配器会读取这一轮：
+
+- 如果这条请求是这一轮唯一的输入，没有用户消息，且恰好有一条最终回答，就把这条回答作为回复。`reply.metadata.source` 为 `turn_final_message`，转发结果的 origin name 也会说明文本取自最终回答。
+- 其他情况不发送任何文本，因为合并的一轮可能包含用户自己的工作。回执会带上 `noReply: { reason, at }`，之后收到真实回复时会清除。原因包括 `merged_turn`、`reply_call_failed`、`no_single_answer`、`turn_interrupted` 和 `turn_failed`。
+
+`noReply` 只有所有者能看到，发起方的 Agent 目前收不到通知，所以目标正忙时它可能一直等到期限。这部分按 Codex 0.166.0 的 turn 结构核对过。

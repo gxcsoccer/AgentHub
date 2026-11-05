@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Add `CodexAdapter` option `replyFallback`, off by default. When a request's turn ends without `reply_agent`, its final answer becomes the reply only if that request was the turn's sole input. The reply is labeled with its source. Otherwise the receipt gets `noReply` with a reason, and no text is sent.
+
 ## 0.3.0 — 2026-11-05
 
 - Add plugin-free local MCP setup with absolute launch paths, scoped caller credentials and inherited-owner-token removal. A local Doubao CLI plugin and allowlisted ZIP packaging remain optional; bilingual guides cover both paths.

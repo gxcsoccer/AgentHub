@@ -38,6 +38,17 @@ interface Pending {
   params: Json;
   timer: NodeJS.Timeout;
 }
+const turnItems = (turn: Json) => (Array.isArray(turn.items) ? turn.items.map(object) : []);
+/** The message ID carried by a delivered AgentHub envelope, if the item is one. */
+function envelopeId(item: Json): string | undefined {
+  if (item.type !== 'functionCallOutput' || item.name !== 'receive_message') return undefined;
+  try {
+    const id = object(object(JSON.parse(String(item.output))).message).messageId;
+    return typeof id === 'string' ? id : undefined;
+  } catch {
+    return undefined;
+  }
+}
 export class CodexAdapter extends EventEmitter implements Adapter {
   readonly harness = 'codex';
   readonly instance: string;
@@ -59,9 +70,16 @@ export class CodexAdapter extends EventEmitter implements Adapter {
       socketPath?: string;
       rpc?: Rpc & { connect?: () => Promise<void> };
       requestTtlMs?: number;
+      /**
+       * When a request's turn ends without reply_agent, return its final answer,
+       * but only if that request was the turn's sole input. Off by default: replied
+       * otherwise means an explicit reply, and this sends model text to the requester.
+       */
+      replyFallback?: boolean;
     } = {},
   ) {
     super();
+    this.replyFallback = options.replyFallback ?? false;
     this.instance = options.instance ?? 'local';
     this.requestTtlMs = options.requestTtlMs ?? 300000;
     this.rpc =
@@ -80,6 +98,11 @@ export class CodexAdapter extends EventEmitter implements Adapter {
     this.rpc.on('disconnect', this.onDisconnect);
   }
   private readonly requestTtlMs: number;
+  private readonly replyFallback: boolean;
+  private readonly watches = new Map<string, { threadId: string; expires: number }>();
+  private watchTimer?: NodeJS.Timeout;
+  private watchDelay = 1000;
+  private watching = false;
   private async request(method: string, params: Json = {}): Promise<Json> {
     if (this.closed) throw new HubError('closed', 'Codex adapter is closed', 503);
     if (!this.rpc.connected) await this.rpc.connect?.();
@@ -403,7 +426,89 @@ export class CodexAdapter extends EventEmitter implements Adapter {
           acceptReply: message.messageKind !== 'result',
         });
         this.tracked.add(message.to.sessionId);
+        this.watchRequest(message, message.to.sessionId);
       }
+  }
+  private watchRequest(message: Envelope, threadId: string) {
+    if (!this.replyFallback || message.messageKind !== 'request') return;
+    this.watches.set(message.messageId, { threadId, expires: Date.parse(message.expiresAt) });
+    this.watchDelay = 1000;
+    this.scheduleWatch();
+  }
+  private scheduleWatch(delay = this.watchDelay) {
+    if (this.closed || this.watching || this.watchTimer || !this.watches.size) return;
+    this.watchTimer = setTimeout(() => {
+      this.watchTimer = undefined;
+      void this.checkWatches();
+    }, delay);
+    this.watchTimer.unref();
+  }
+  // Polling is the fallback because a turn/completed notification isn't guaranteed
+  // on this connection: AgentHub never subscribes through an implicit thread/resume.
+  private async checkWatches() {
+    this.watching = true;
+    try {
+      for (const [id, watch] of this.watches)
+        if (watch.expires <= Date.now()) this.watches.delete(id);
+      for (const threadId of new Set([...this.watches.values()].map((w) => w.threadId))) {
+        let turns: Json[];
+        try {
+          const thread = object(
+            (await this.request('thread/read', { threadId, includeTurns: true })).thread,
+          );
+          turns = Array.isArray(thread.turns) ? thread.turns.map(object) : [];
+        } catch {
+          if (this.closed) return;
+          continue;
+        }
+        for (const [id, watch] of this.watches) {
+          if (watch.threadId !== threadId) continue;
+          const turn = turns.find((t) => turnItems(t).some((item) => envelopeId(item) === id));
+          if (!turn || turn.status === 'inProgress') continue;
+          this.watches.delete(id);
+          this.settleTurn(id, turn);
+        }
+      }
+    } finally {
+      this.watching = false;
+    }
+    this.watchDelay = Math.min(this.watchDelay * 2, 5000);
+    this.scheduleWatch();
+  }
+  private settleTurn(messageId: string, turn: Json) {
+    const items = turnItems(turn);
+    const calls = items.filter((i) => i.type === 'mcpToolCall' && i.tool === 'reply_agent');
+    if (calls.some((call) => call.status === 'completed')) return;
+    const answers = items.filter((i) => i.type === 'agentMessage' && i.phase === 'final_answer');
+    const merged =
+      items.some((i) => i.type === 'userMessage') ||
+      items.filter((i) => envelopeId(i) !== undefined).length !== 1;
+    const reason =
+      turn.status !== 'completed'
+        ? `turn_${String(turn.status)}`
+        : merged
+          ? 'merged_turn'
+          : calls.length
+            ? 'reply_call_failed'
+            : answers.length !== 1 || !answers[0]!.text
+              ? 'no_single_answer'
+              : undefined;
+    if (reason) {
+      this.emit('update', {
+        messageId,
+        status: 'received',
+        noReply: { reason, at: new Date().toISOString() },
+      });
+      return;
+    }
+    this.emit('update', {
+      messageId,
+      status: 'replied',
+      reply: {
+        text: String(answers[0]!.text).slice(0, 100000),
+        metadata: { source: 'turn_final_message', turnId: String(turn.id) },
+      },
+    });
   }
   async history(address: SessionAddress, query: PageQuery = {}) {
     const q = pageQuery(query);
@@ -510,6 +615,7 @@ export class CodexAdapter extends EventEmitter implements Adapter {
         }),
       },
     });
+    this.watchRequest(message, id);
     return { status: 'accepted', native: { turnId: object(result.turn).id } };
   }
   private readonly onNotification = (message: { method: string; params: Json }): void => {
@@ -518,6 +624,15 @@ export class CodexAdapter extends EventEmitter implements Adapter {
       typeof message.params.threadId === 'string'
     )
       this.attachedThreads.delete(message.params.threadId);
+    if (
+      message.method === 'turn/completed' &&
+      [...this.watches.values()].some((w) => w.threadId === message.params.threadId)
+    ) {
+      clearTimeout(this.watchTimer);
+      this.watchTimer = undefined;
+      this.watchDelay = 1000;
+      this.scheduleWatch(0);
+    }
     if (message.method === 'serverRequest/resolved')
       for (const [id, p] of this.pending)
         if (p.upstreamId === message.params.requestId) {
@@ -614,6 +729,8 @@ export class CodexAdapter extends EventEmitter implements Adapter {
   };
   async close(): Promise<void> {
     this.closed = true;
+    clearTimeout(this.watchTimer);
+    this.watches.clear();
     this.attachedThreads.clear();
     this.rpc.off('request', this.onRequest);
     this.rpc.off('notification', this.onNotification);
