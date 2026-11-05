@@ -66,7 +66,8 @@
     "test:package": "node scripts/verify-package.mjs",
     "smoke:acp": "npm run build && node scripts/smoke-acp-live.mjs",
     "smoke:compatibility": "npm run build && node scripts/smoke-compatibility.mjs",
-    "test:scripts": "npm run build && node --test --test-timeout=15000 test/live-safety.test.mjs",
+    "test:scripts": "npm run build && node --test --test-timeout=15000 test/live-safety.test.mjs test/doubao-plugin.test.mjs",
+    "package:doubao": "node scripts/package-doubao.mjs",
     "smoke:connector": "npm run build && node scripts/smoke-connector.mjs",
     "smoke:connector:codex": "npm run build && node scripts/smoke-connector-codex.mjs",
     "smoke:connector:cli": "npm run build && node scripts/smoke-connector-cli.mjs"

@@ -1,5 +1,9 @@
 # 验证说明
 
+## 豆包本地 CLI 接入（2026-11-05，开发分支）
+
+`npm run check` 通过 219 项测试（核心 151、保留 Bridge 41、脚本 27，含新增豆包测试 4 项）。插件 ZIP 仅含白名单中的 3 个文件，不包含私人凭据。`--run --doubao-cli` 隔离验收通过 13 项检查：原有连接器 8 项，加上真实 Claude/Codex 回复、重复请求复用和 owner 操作拒绝共 5 项。自有进程和临时凭据均已清理。实际验证范围为 macOS Claude 2.1.318 / Codex 0.166.0 的 CLI 工作流，**不包含豆包宿主加载、工具选择或主动唤醒**。私有报告：`.local/verification/doubao-cli-backends-live.json`。
+
 ## 0.2.0 发布验证（2026-11-05）
 
 `npm run check` 通过 215 项测试（统一层 151、保留的 Codex Bridge 41、验收脚本安全测试 23）；行/分支/函数覆盖率为 96.99% / 88.83% / 94.93%。安装包验证涵盖 5 个导出、两个 CLI、版本信息、HTTP、SQLite 和空事件游标恢复。0.2.0 的 Codex MCP / Claude CLI 隔离真实验收通过 8 项检查，包括双向请求/回复/结果、已加载会话发现和清理。原生范围仍为 macOS Codex 0.166.0 / Claude 2.1.318，未使用工作会话。私有报告位于忽略的 `.local/verification/release-0.2.0-*`。

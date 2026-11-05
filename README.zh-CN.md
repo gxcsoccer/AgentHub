@@ -116,7 +116,7 @@ agenthub mcp --origin-name 'Doubao Work'
 
 MCP 使用官方 SDK，提供会话发现、详情、历史、消息提交和状态查询、全文检索共七个工具。面向 agent 的工具不开放审批、恢复或中断操作。[配置模板](examples/mcp.json)。
 
-本地 CLI/MCP 已由官方 MCP 客户端测试；**尚未在豆包运行时完成验收**。豆包 Agent OpenAPI、MCP Events 目前只有调研与设计，没有实现。[接入说明](docs/DOUBAO.zh-CN.md)。
+当前开发分支新增 `plugins/doubao` 本地 CLI 插件、受限配置生成器与 ZIP 打包，依赖 AgentHub 0.2.0；**尚未在豆包宿主完成验收**。豆包原生身份、主动唤醒、Agent OpenAPI 和 MCP Events 尚未实现。[接入说明](docs/DOUBAO.zh-CN.md)。
 
 ## 验证与边界
 

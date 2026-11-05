@@ -1,0 +1,14 @@
+{
+  "name": "gxcsoccer-agenthub",
+  "version": "0.1.0",
+  "description": "Use a local AgentHub to exchange requests and correlated replies with authorized coding sessions.",
+  "extensions": {
+    "com.doubao": {
+      "displayName": { "zh": "AgentHub 编程协作", "en": "AgentHub collaboration" },
+      "displayDescription": {
+        "zh": "向已授权的本机 Claude/Codex 会话发送请求，并按请求 ID 获取回复。",
+        "en": "Send requests to authorized local Claude/Codex sessions and retrieve correlated replies."
+      }
+    }
+  }
+}

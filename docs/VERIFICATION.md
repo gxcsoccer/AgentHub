@@ -1,5 +1,9 @@
 # Verification
 
+## Doubao local CLI integration (2026-11-05, development branch)
+
+`npm run check` passes 219 tests (151 core, 41 retained bridge, 27 script checks, including four new Doubao cases). The plugin ZIP contains exactly three allowlisted files and excludes private credentials. The isolated `--run --doubao-cli` acceptance passes 13 checks: eight existing connector checks and five added scoped CLI checks covering real Claude and Codex replies, duplicate-request reuse and owner-operation denial. All owned processes and temporary credentials were cleaned up. This verifies the CLI workflow against macOS Claude 2.1.318 / Codex 0.166.0; it does **not** verify Doubao host loading, tool selection or unsolicited wake-up. Private report: `.local/verification/doubao-cli-backends-live.json`.
+
 ## 0.2.0 release verification (2026-11-05)
 
 `npm run check` passes 215 tests (151 unified, 41 retained Codex Bridge, 23 runner-safety); coverage is 96.99% lines, 88.83% branches and 94.93% functions. Package installation verifies five exports, both binaries, version metadata, HTTP, SQLite and empty event cursor recovery. The 0.2.0 Codex MCP / Claude CLI isolated run passes all eight checks, including both request/reply/result directions, loaded peer discovery and cleanup. Native versions remain macOS Codex 0.166.0 / Claude 2.1.318. No working sessions are used. Private reports are kept under ignored `.local/verification/release-0.2.0-*`.

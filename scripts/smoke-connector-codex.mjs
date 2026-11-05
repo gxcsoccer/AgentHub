@@ -25,14 +25,17 @@ if (!process.argv.includes('--run')) {
   console.log('No live actions. Add --run for isolated Codex/Claude connector acceptance.');
   process.exit(0);
 }
-const claudeCli = process.argv.includes('--claude-cli');
+const doubaoCli = process.argv.includes('--doubao-cli');
+const claudeCli = process.argv.includes('--claude-cli') || doubaoCli;
 const root = await mkdtemp('/tmp/ah-life-'),
   work = join(root, 'work'),
   cli = resolve('dist/src/cli.js'),
   reportPath = resolve(
-    claudeCli
-      ? '.local/verification/connector-codex-claude-cli-live.json'
-      : '.local/verification/connector-codex-live.json',
+    doubaoCli
+      ? '.local/verification/doubao-cli-backends-live.json'
+      : claudeCli
+        ? '.local/verification/connector-codex-claude-cli-live.json'
+        : '.local/verification/connector-codex-live.json',
   );
 await mkdir(work);
 const report = {
@@ -40,11 +43,12 @@ const report = {
   checks: [],
   cleanup: [],
   scope:
-    'Owned independent App Server and fresh Claude PTY only; no native dynamic reply tool or resume.',
+    'Owned independent App Server and fresh Claude PTY only; no native dynamic reply tool or resume. --doubao-cli tests the plugin CLI workflow, not the Doubao host runtime.',
 };
 const owner = randomUUID() + randomUUID(),
   codexToken = randomUUID() + randomUUID(),
   claudeToken = randomUUID() + randomUUID();
+const doubaoToken = randomUUID() + randomUUID();
 const env = cleanEnv();
 for (const key of ['CLAUDE_CODE_SESSION_ID', 'CLAUDE_CODE_PLUGIN_DIRS', 'CLAUDE_CONFIG_DIR'])
   delete env[key];
@@ -162,6 +166,23 @@ try {
     {
       store,
       callers: [
+        ...(doubaoCli
+          ? [
+              {
+                id: 'doubao-plugin',
+                grants: [
+                  {
+                    harness: 'codex',
+                    instance: 'local',
+                    sessions: [thread.id],
+                    operations: ['read', 'send'],
+                  },
+                  // discover() is restricted to the exact owned Claude PID and test workspace.
+                  { harness: 'claude', instance: 'local', operations: ['read', 'send'] },
+                ],
+              },
+            ]
+          : []),
         {
           id: 'agents',
           grants: [
@@ -194,7 +215,12 @@ try {
       enrollmentToken: claudeToken,
     },
   ]);
-  app = createHubServer({ hub, token: owner, connectors: service });
+  app = createHubServer({
+    hub,
+    token: owner,
+    connectors: service,
+    ...(doubaoCli ? { callers: [{ id: 'doubao-plugin', token: doubaoToken }] } : {}),
+  });
   app.server.listen(0, '127.0.0.1');
   await once(app.server, 'listening');
   url = 'http://127.0.0.1:' + app.server.address().port;
@@ -406,6 +432,72 @@ try {
   );
   assert(!nativeCalls.some((c) => c.method === 'thread/resume'));
   check('result_termination_and_no_resume_or_dynamic_reply_tool');
+  if (doubaoCli) {
+    const tokenFile = join(root, 'doubao-caller.token');
+    await writeFile(tokenFile, doubaoToken, { mode: 0o600 });
+    const cliEnv = { ...env };
+    delete cliEnv.AGENTHUB_TOKEN;
+    const call = async (args) =>
+      JSON.parse(
+        (
+          await exec(process.execPath, [cli, ...args, '--url', url, '--token-file', tokenFile], {
+            env: cliEnv,
+            timeout: 40000,
+          })
+        ).stdout,
+      );
+    for (const [harness, sessionId, delivery] of [
+      ['claude', sid, 'peer_message'],
+      ['codex', thread.id, 'tool_output'],
+    ]) {
+      await idle();
+      await until(
+        async () =>
+          (await hub.getSession({ harness: 'codex', instance: 'local', sessionId: thread.id }))
+            .status === 'idle',
+        'Codex idle before external CLI request',
+        60000,
+      );
+      const input = {
+        messageId: randomUUID(),
+        messageKind: 'request',
+        to: { harness, instance: 'local', sessionId },
+        origin: { name: 'Doubao Work via AgentHub' },
+        delivery,
+        text: 'DOUBAO_CLI_TO_' + harness.toUpperCase() + '_TEST',
+        expiresAt: new Date(Date.now() + 180000).toISOString(),
+      };
+      const path = join(root, 'doubao-' + harness + '-request.json');
+      await writeFile(path, JSON.stringify(input), { mode: 0o600 });
+      await call(['send', '--message-file', path]);
+      const receipt = await until(
+        async () => {
+          const current = await call([
+            'status',
+            '--message-id',
+            input.messageId,
+            '--wait-ms',
+            '1000',
+          ]);
+          if (['failed', 'rejected', 'unknown'].includes(current.status))
+            throw Error(JSON.stringify(current));
+          return current.status === 'replied' ? current : undefined;
+        },
+        harness + ' external CLI reply',
+        90000,
+      );
+      assert.equal(receipt.reply.text, 'ANSWER_TEST:' + input.text);
+      assert.equal(receipt.forwardedMessageId, undefined);
+      assert.equal(request(input.text).envelope.origin.session, undefined);
+      check('doubao_cli_workflow_to_' + harness + '_native_reply_without_claimed_source_session');
+      const count = store.load().length;
+      assert.equal((await call(['send', '--message-file', path])).status, 'replied');
+      assert.equal(store.load().length, count);
+      check('doubao_cli_' + harness + '_duplicate_reuses_reply');
+    }
+    await assert.rejects(call(['connections']));
+    check('doubao_scoped_cli_cannot_use_owner_connections');
+  }
   report.outcome = 'passed';
 } catch (error) {
   report.outcome = 'failed';
@@ -416,9 +508,11 @@ try {
   await mkdir(resolve('.local/verification'), { recursive: true });
   await writeFile(
     resolve(
-      claudeCli
-        ? '.local/verification/connector-codex-claude-cli-terminal.txt'
-        : '.local/verification/connector-codex-claude-terminal.txt',
+      doubaoCli
+        ? '.local/verification/doubao-cli-backends-terminal.txt'
+        : claudeCli
+          ? '.local/verification/connector-codex-claude-cli-terminal.txt'
+          : '.local/verification/connector-codex-claude-terminal.txt',
     ),
     await terminal(),
     { mode: 0o600 },
