@@ -1,5 +1,13 @@
 # 验证说明
 
+## 0.4.1 发布检查（2026-11-06）
+
+PR #11 已合并。包和 OpenAPI 版本设为 0.4.1 后，`npm run check` 通过 **276 项测试**（核心 207、保留 Bridge 41、脚本 28），覆盖率为**行 96.56%、分支 88.50%、函数 94.74%**。`npm run test:package` 通过。
+
+在 `c9b1292` 上用隔离 home 和真实 Codex 0.166.0 TUI 运行，数据目录启动器以 `exec` 启动 Node。`connect` 达到 `ready`，配置里只有启动器、没有 App 路径，`list_peers` 完成且身份校验通过。把 App 目录改名并只重写启动器后，配置逐字节不变，`connect` 仍为 `ready` 且 `changed: false`，新线程的 helper 运行在新路径上。
+
+该次运行的 args 非空，所以 `144f598` 的缺省 args 修复只有假 RPC 和真实 CLI 配置的覆盖。实例忙碌或 Hub 下线时的启动器行为没有测试。
+
 ## 0.4.0 发布检查（2026-11-06）
 
 PR #9 已合并。包和 OpenAPI 版本设为 0.4.0 后，`npm run check` 通过 **274 项测试**（核心 205、保留 Bridge 41、脚本 28），覆盖率为**行 96.88%、分支 88.53%、函数 94.72%**。`npm run test:package` 通过全新安装、五个导出、两个二进制、HTTP/SQLite 和已安装的 setup CLI。

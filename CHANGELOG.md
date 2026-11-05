@@ -1,8 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.4.1 — 2026-11-06
 
 - Add connector profile option `mcpCommand` for Codex, so a host whose install path can change can register a stable launcher. `connect` writes it and compares against it. Without it, behavior is unchanged.
+
+Upgrade the Hub and connector processes together. Connector state is unchanged from 0.4.0.
+
+本版为 Codex profile 新增 `mcpCommand`，让安装路径可能变化的宿主能登记固定启动器。Hub 与连接器进程需同步升级。连接器状态与 0.4.0 相同。
 
 ## 0.4.0 — 2026-11-06
 

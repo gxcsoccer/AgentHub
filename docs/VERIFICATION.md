@@ -1,5 +1,13 @@
 # Verification
 
+## 0.4.1 release checks (2026-11-06)
+
+PR #11 is merged. With the package and OpenAPI version set to 0.4.1, `npm run check` passes **276 tests** (207 core, 41 retained bridge, 28 script checks); coverage is **96.56% lines / 88.50% branches / 94.74% functions**. `npm run test:package` passes.
+
+A real Codex 0.166.0 TUI run in an isolated home used a data-directory launcher that starts Node with `exec`, at `c9b1292`. `connect` reached `ready`, the config held the launcher and no app path, and `list_peers` completed with identity verified. After renaming the app directory and rewriting only the launcher, the config was byte-identical, `connect` stayed `ready` with `changed: false`, and a new thread's helper ran from the new path.
+
+That run used non-empty args, so the omitted-args fix in `144f598` has only fake-RPC and real CLI-config coverage. A launcher during a busy instance or a Hub outage wasn't tested.
+
 ## 0.4.0 release checks (2026-11-06)
 
 PR #9 is merged. With the package and OpenAPI version set to 0.4.0, `npm run check` passes **274 tests** (205 core, 41 retained bridge, 28 script checks); coverage is **96.88% lines / 88.53% branches / 94.72% functions**. `npm run test:package` passes fresh installation, five exports, both binaries, HTTP/SQLite and the installed setup CLI.
