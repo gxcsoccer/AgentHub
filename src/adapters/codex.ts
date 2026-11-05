@@ -50,6 +50,8 @@ export class CodexAdapter extends EventEmitter implements Adapter {
   private connectionEpoch = 0;
   private readonly pending = new Map<string, Pending>();
   private closed = false;
+  private connectorInstallation = Promise.resolve();
+  private connectorReloadAt = -Infinity;
   constructor(
     options: {
       instance?: string;
@@ -270,6 +272,19 @@ export class CodexAdapter extends EventEmitter implements Adapter {
     return this.getSession(address);
   }
   async installConnector(address: SessionAddress, serverName: string, config: Json) {
+    const previous = this.connectorInstallation;
+    let release!: () => void;
+    this.connectorInstallation = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await previous;
+    try {
+      return await this.installConnectorOnce(address, serverName, config);
+    } finally {
+      release();
+    }
+  }
+  private async installConnectorOnce(address: SessionAddress, serverName: string, config: Json) {
     await this.requireLoaded(sessionId(address.sessionId));
     const session = await this.getSession(address);
     if (!session.capabilities.send.length)
@@ -343,7 +358,10 @@ export class CodexAdapter extends EventEmitter implements Adapter {
         if (!(error instanceof HubError) || error.code !== 'connector_unavailable') throw error;
       }
     }
+    if (!changed && Date.now() - this.connectorReloadAt < 30000)
+      return { changed: false, activationScope: 'instance' as const, reloaded: false };
     // Upstream declares Option<()>: JSON null, not an empty object. Never replay automatically.
+    this.connectorReloadAt = Date.now();
     await this.request('config/mcpServer/reload', null as unknown as Json);
     return { changed, activationScope: 'instance' as const, reloaded: true };
   }

@@ -268,11 +268,18 @@ test('connector client coalesces enrollment and never automatically retries a fa
   assert.equal(calls, 2);
   fail = true;
   await assert.rejects(client.ask({ to: '@claude/reviewer', message: 'work' }), /revoked/);
-  assert.equal(calls, 3);
-  assert.equal(enrollments, 1);
+  await assert.rejects(
+    client.ask({ to: '@claude/reviewer', message: 'work' }),
+    (e: unknown) =>
+      e instanceof Error &&
+      e.message.includes('not submitted') &&
+      !e.message.includes('do not submit it again'),
+  );
+  assert.equal(calls, 4);
+  assert.equal(enrollments, 2);
   fail = false;
   await client.identity();
-  assert.equal(enrollments, 2);
+  assert.equal(enrollments, 3);
   assert.throws(
     () => client.ask({ to: '@claude/reviewer', message: 'work', deadlineSeconds: 14401 }),
     /deadline/,
@@ -286,6 +293,81 @@ test('connector client coalesces enrollment and never automatically retries a fa
     }).identity(),
     /startup/,
   );
+});
+
+test('HTTP credential expiry renews once and submits the exact original request only once', async (t) => {
+  const f = await setup(t),
+    operations: unknown[] = [];
+  let enrollments = 0;
+  const client = new ConnectorClient({
+    baseUrl: f.baseUrl,
+    enrollmentToken: token,
+    evidence: { pid: 10001, startupSessionId: f.a.sessionId },
+    fetch: async (url, init) => {
+      if (String(url).endsWith('/enroll')) enrollments++;
+      if (String(url).endsWith('/call')) operations.push(JSON.parse(String(init?.body)).operation);
+      return fetch(url, init);
+    },
+  });
+  await client.identity();
+  const state = f.hub.featureState('connectors'),
+    registry = state.get('registry')!;
+  for (const c of Object.values(registry.credentials as Record<string, { expires: number }>))
+    c.expires = Date.now() - 1;
+  state.set('registry', registry);
+  await client.ask({ to: f.b, message: 'Review once' });
+  assert.equal(enrollments, 2);
+  assert.deepEqual(
+    operations[1],
+    operations[2],
+    'ID, payload and deadline survive refresh unchanged',
+  );
+  assert.equal(f.adapter.calls.length, 1);
+});
+
+test('credential refresh is bounded, coalesced and never retries uncertain delivery', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.now() });
+  let enrollments = 0,
+    calls = 0,
+    mode = 'ok';
+  const client = new ConnectorClient({
+    baseUrl: 'http://localhost:3211',
+    enrollmentToken: token,
+    evidence: { pid: 10001, startupSessionId: randomUUID() },
+    fetch: async (url, init) => {
+      if (String(url).endsWith('/enroll')) {
+        enrollments++;
+        return Response.json({
+          token: 'business-' + enrollments,
+          expiresAt: new Date(Date.now() + 1000).toISOString(),
+          binding: {},
+        });
+      }
+      calls++;
+      if (mode === 'unknown') throw Error('Connection reset after dispatch');
+      if (mode === 'expired')
+        return Response.json(
+          { error: { code: 'credential_expired', message: 'Expired before dispatch' } },
+          { status: 401 },
+        );
+      return Response.json(JSON.parse(String(init?.body)).operation);
+    },
+  });
+  await client.identity();
+  t.mock.timers.tick(1001);
+  await Promise.all([client.identity(), client.listPeers()]);
+  assert.equal(enrollments, 2, 'expired cached credential proactively renewed once');
+  assert.equal(calls, 3, 'no expired business call attempted');
+  mode = 'expired';
+  await assert.rejects(client.ask({ to: '@claude/reviewer', message: 'Task' }), /not submitted/);
+  assert.equal(enrollments, 3);
+  assert.equal(calls, 5, 'at most one retry');
+  mode = 'unknown';
+  await assert.rejects(
+    client.ask({ to: '@claude/reviewer', message: 'Task' }),
+    /do not submit it again/,
+  );
+  assert.equal(calls, 6, 'network uncertainty is never replayed');
 });
 
 test('serve CLI loads connector profiles with restricted access and rejects credential reuse', async (t) => {

@@ -87,7 +87,7 @@ export class AgentHubClient {
     );
   }
   enrollConnector(evidence: ConnectorEvidence) {
-    return this.request<{ token: string; binding: ConnectorBinding }>(
+    return this.request<{ token: string; binding: ConnectorBinding; expiresAt?: string }>(
       'POST',
       '/v1/connector/enroll',
       {},

@@ -32,7 +32,7 @@ export function createConnectorMcpServer(client: ConnectorClient) {
     'list_peers',
     {
       description:
-        'Discover authorized peers and canonical addresses. Names may be ambiguous; source identity is verified by the connector.',
+        'Discover authorized peers and canonical addresses. gaps identifies instances whose discovery failed or exceeded its bound; the list may be incomplete. Names may be ambiguous; source identity is verified by the connector.',
       inputSchema: z.strictObject({}),
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     },

@@ -7,6 +7,7 @@ import type { ConnectorEvidence } from './types.js';
 /** The helper owns process evidence and credentials; model arguments cannot set them. */
 export class ConnectorClient {
   private business?: Promise<AgentHubClient>;
+  private businessExpires = Infinity;
   private readonly enrollment: AgentHubClient;
   private readonly evidence: ConnectorEvidence;
   readonly connectionId = randomUUID();
@@ -53,22 +54,44 @@ export class ConnectorClient {
         'Claude startup session identity is unavailable; run the MCP helper as a direct Claude child',
         409,
       );
-    this.business ??= this.enrollment
-      .enrollConnector(evidence)
-      .then(
-        ({ token }) =>
-          new AgentHubClient({ baseUrl: this.options.baseUrl, token, fetch: this.options.fetch }),
-      )
-      .catch((error) => {
-        this.business = undefined;
+    if (this.businessExpires <= Date.now()) {
+      this.business = undefined;
+      this.businessExpires = Infinity;
+    }
+    for (let attempt = 0; ; attempt++) {
+      if (!this.business) {
+        const enrollment = this.enrollment
+          .enrollConnector(evidence)
+          .then(({ token, expiresAt }) => {
+            this.businessExpires = expiresAt ? Date.parse(expiresAt) : Infinity;
+            return new AgentHubClient({
+              baseUrl: this.options.baseUrl,
+              token,
+              fetch: this.options.fetch,
+            });
+          })
+          .catch((error: unknown) => {
+            if (this.business === enrollment) this.business = undefined;
+            throw error;
+          });
+        this.business = enrollment;
+      }
+      const pending = this.business;
+      try {
+        const client = await pending;
+        return await client.connectorCall(evidence, operation);
+      } catch (error) {
+        if (error instanceof HubApiError && error.status === 401) {
+          if (this.business === pending) {
+            this.business = undefined;
+            this.businessExpires = Infinity;
+          }
+          // This code is reserved for authorization failure before dispatch. Reuse
+          // the exact operation (ID/deadline included), never retry uncertain writes.
+          if (attempt === 0 && error.code === 'credential_expired') continue;
+        }
         throw error;
-      });
-    const client = await this.business;
-    try {
-      return await client.connectorCall(evidence, operation);
-    } catch (error) {
-      if (error instanceof HubApiError && error.status === 401) this.business = undefined;
-      throw error;
+      }
     }
   }
   identity(meta?: unknown) {
@@ -100,7 +123,7 @@ export class ConnectorClient {
     ).catch((error: unknown) => {
       throw new HubError(
         error instanceof HubApiError ? error.code : 'connector_request_failed',
-        `Request ${messageId}: ${error instanceof Error ? error.message : String(error)}. If delivery is uncertain, ask the owner to inspect this request ID; do not submit it again with a new ID.`,
+        `Request ${messageId}: ${error instanceof Error ? error.message : String(error)}. ${error instanceof HubApiError && [401, 403].includes(error.status) ? 'Authorization failed before dispatch; this request was not submitted.' : 'If delivery is uncertain, ask the owner to inspect this request ID; do not submit it again with a new ID.'}`,
         error instanceof HubApiError ? error.status : 502,
       );
     });

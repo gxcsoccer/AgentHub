@@ -203,7 +203,11 @@ export class ConnectorService {
       throw new HubError('identity_unavailable', 'Connector process owner does not match Hub', 409);
     return { child, host };
   }
-  private async evidencePair(p: ConnectorProfile, e: ConnectorEvidence): Promise<Pair> {
+  private async evidencePair(
+    p: ConnectorProfile,
+    e: ConnectorEvidence,
+    rows?: SessionInfo[],
+  ): Promise<Pair> {
     const cli = !('harness' in e) && e.transport === 'cli';
     if (cli !== (p.transport === 'cli'))
       throw new HubError(
@@ -212,8 +216,8 @@ export class ConnectorService {
         409,
       );
     if (!cli) return this.pair(e.pid);
-    const rows = await this.sessions(p, p),
-      ancestors: ProcessIdentity[] = [];
+    rows ??= await this.sessions(p, p);
+    const ancestors: ProcessIdentity[] = [];
     let pid = e.pid;
     for (let i = 0; i < 8 && pid > 1; i++) {
       if (ancestors.some((a) => a.pid === pid)) break;
@@ -269,8 +273,10 @@ export class ConnectorService {
     } while (cursor);
     return rows;
   }
-  private async native(p: ConnectorProfile, host: ProcessIdentity) {
-    const rows = (await this.sessions(p, p)).filter((s) => s.metadata?.pid === host.pid);
+  private async native(p: ConnectorProfile, host: ProcessIdentity, snapshot?: SessionInfo[]) {
+    const rows = (snapshot ?? (await this.sessions(p, p))).filter(
+      (s) => s.metadata?.pid === host.pid,
+    );
     if (rows.length !== 1)
       throw new HubError(
         'identity_pending',
@@ -297,7 +303,12 @@ export class ConnectorService {
     this.save(s);
     return structuredClone(binding);
   }
-  private async verify(p: ConnectorProfile, pair: Pair, evidence: ConnectorEvidence) {
+  private async verify(
+    p: ConnectorProfile,
+    pair: Pair,
+    evidence: ConnectorEvidence,
+    rows?: SessionInfo[],
+  ) {
     if ('harness' in evidence) {
       if (
         p.harness !== 'codex' ||
@@ -325,7 +336,7 @@ export class ConnectorService {
     if (p.harness !== 'claude')
       throw new HubError('identity_unavailable', 'Codex requires per-call metadata', 409);
     const { startupSessionId } = evidence;
-    const native = await this.native(p, pair.host);
+    const native = await this.native(p, pair.host, rows);
     const hook =
       evidence.transport === 'cli' ? undefined : this.read().hooks[hostKey(p, pair.host)];
     if (hook?.ended) throw new HubError('session_ended', 'Session lifecycle ended', 409);
@@ -342,8 +353,9 @@ export class ConnectorService {
     await this.hub.ready();
     const p = this.enrollment(token),
       e = parse(evidenceSchema, value),
-      pair = await this.evidencePair(p, e);
-    const verified = await this.verify(p, pair, e);
+      rows = p.harness === 'claude' ? await this.sessions(p, p) : undefined,
+      pair = await this.evidencePair(p, e, rows);
+    const verified = await this.verify(p, pair, e, rows);
     const business = randomBytes(32).toString('base64url'),
       s = this.read();
     s.credentials[fingerprint(business)] = {
@@ -359,7 +371,11 @@ export class ConnectorService {
       expires: Date.now() + (!('harness' in e) && e.transport === 'cli' ? 60000 : 86400000),
     };
     this.save(s);
-    return { token: business, binding: verified.binding };
+    return {
+      token: business,
+      binding: verified.binding,
+      expiresAt: new Date(s.credentials[fingerprint(business)]!.expires).toISOString(),
+    };
   }
   async hook(token: string, value: unknown) {
     await this.hub.ready();
@@ -401,12 +417,19 @@ export class ConnectorService {
   private async authorized(token: string, value: unknown) {
     const e = parse(evidenceSchema, value),
       c: Credential | undefined = this.read().credentials[fingerprint(token)];
-    if (!c || c.expires < Date.now())
-      throw new HubError('invalid_credential', 'Invalid or expired connector credential', 401);
+    if (!c) throw new HubError('invalid_credential', 'Unknown connector credential', 401);
     const p = this.profile(c.profileId);
     if (c.revision !== revision(p))
       throw new HubError('credential_revoked', 'Connector credential revoked by owner', 401);
-    const pair = await this.evidencePair(p, e);
+    if (c.expires <= Date.now())
+      throw new HubError(
+        'credential_expired',
+        'Connector credential expired before dispatch; reenroll',
+        401,
+      );
+    // A snapshot belongs to this verification phase only. The pre-send phase reads again.
+    const rows = p.harness === 'claude' ? await this.sessions(p, p) : undefined,
+      pair = await this.evidencePair(p, e, rows);
     if (
       !same(pair, {
         child: c.child,
@@ -424,7 +447,7 @@ export class ConnectorService {
         'Credential belongs to another connector process',
         409,
       );
-    return { p, pair, ...(await this.verify(p, pair, e)) };
+    return { p, pair, ...(await this.verify(p, pair, e, rows)) };
   }
   async call(token: string, evidence: unknown, value: unknown): Promise<unknown> {
     await this.hub.ready();
@@ -432,7 +455,6 @@ export class ConnectorService {
       { p, binding, session } = await this.authorized(token, evidence);
     if (op.operation === 'identity') return { binding };
     if (op.operation === 'activate') {
-      const peers = await this.peers(p, session);
       const current = await this.authorized(token, evidence);
       const activation = this.activation.confirm(
         p,
@@ -440,9 +462,9 @@ export class ConnectorService {
         current.pair.host,
         op.activationId,
       );
-      return { ...activation, binding: current.binding, peers };
+      return { ...activation, binding: current.binding };
     }
-    if (op.operation === 'list_peers') return { peers: await this.peers(p, session) };
+    if (op.operation === 'list_peers') return this.peers(p, session);
     if (op.operation === 'reply')
       return this.hub.replyToMessage(op.request, binding.address, op.message, p.callerId);
     const deadline = Date.parse(op.expiresAt);
@@ -452,7 +474,14 @@ export class ConnectorService {
     if (typeof op.to === 'string') {
       const match = /^@([^/]+)\/(.+)$/.exec(op.to);
       if (!match) throw new HubError('invalid_target', 'Use @harness/name or a canonical address');
-      const found = (await this.peers(p)).filter(
+      const discovery = await this.peers(p, undefined, match[1]);
+      if (discovery.gaps.length)
+        throw new HubError(
+          'discovery_incomplete',
+          'Target harness discovery incomplete; use a canonical address',
+          409,
+        );
+      const found = discovery.peers.filter(
         (s) =>
           s.address.harness === match[1] &&
           (s.name === match[2] || s.address.sessionId === match[2]),
@@ -511,20 +540,47 @@ export class ConnectorService {
   private async target(address: SessionAddress, callerId: string) {
     const session = await this.hub.getSession(address, callerId);
     if (session.replyReadiness?.state === 'ready' || address.harness !== 'codex') return session;
-    const profile = this.profiles.find(
+    const profiles = this.profiles.filter(
       (p) =>
         p.enabled !== false && p.harness === address.harness && p.instance === address.instance,
     );
     const adapter = this.hub.adapter(address);
-    if (profile && adapter.connectorSession)
-      return adapter.connectorSession(address, profile.mcpServerName ?? 'agenthub');
+    if (profiles.length && adapter.connectorSession) {
+      let unavailable: HubError | undefined;
+      for (const name of new Set(profiles.map((p) => p.mcpServerName ?? 'agenthub'))) {
+        try {
+          return await adapter.connectorSession(address, name);
+        } catch (error) {
+          if (!(error instanceof HubError) || error.code !== 'connector_unavailable') throw error;
+          unavailable = error;
+        }
+      }
+      throw unavailable!;
+    }
     return session;
   }
-  private async peers(p: ConnectorProfile, current?: SessionInfo) {
+  private async peers(p: ConnectorProfile, current?: SessionInfo, harness?: string) {
     const peers: SessionInfo[] = [];
+    const gaps: { harness: string; instance: string; code: string }[] = [];
     for (const scope of this.hub.instances(p.callerId)) {
+      if (harness && scope.harness !== harness) continue;
       if (!this.hub.access.allows(p.callerId, 'read', scope)) continue;
-      for (const s of await this.sessions(p, scope)) {
+      let rows: SessionInfo[];
+      try {
+        rows = await this.sessions(p, scope);
+      } catch (error) {
+        if (
+          error instanceof HubError &&
+          ['storage_unavailable', 'corrupt_store', 'closed'].includes(error.code)
+        )
+          throw error;
+        gaps.push({
+          ...scope,
+          code: error instanceof HubError ? error.code : 'discovery_unavailable',
+        });
+        continue;
+      }
+      for (const s of rows) {
         if (this.hub.access.allows(p.callerId, 'send', s.address, s.address.sessionId)) {
           // Native discovery describes the legacy reply route. Only the current
           // session has just been verified against this connector connection.
@@ -558,7 +614,7 @@ export class ConnectorService {
         }
       }
     }
-    return peers;
+    return { peers, gaps };
   }
   async connect(value: unknown, port: number) {
     await this.hub.ready();

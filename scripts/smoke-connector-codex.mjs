@@ -12,7 +12,15 @@ import {
   createHubServer,
   openReceiptStore,
 } from '../dist/src/index.js';
-import { cleanEnv, spawnOwned, stopOwned, exec, until, startCodex } from './live-processes.mjs';
+import {
+  cleanEnv,
+  spawnOwned,
+  stopOwned,
+  exec,
+  until,
+  startCodex,
+  codexModelTurn,
+} from './live-processes.mjs';
 if (!process.argv.includes('--run')) {
   console.log('No live actions. Add --run for isolated Codex/Claude connector acceptance.');
   process.exit(0);
@@ -147,23 +155,7 @@ try {
     developerInstructions: system,
   });
   await rpc.request('thread/name/set', { threadId: thread.id, name: 'connector-codex' });
-  const codexTurn = async (text) => {
-    const { turn } = await rpc.request('turn/start', {
-      threadId: thread.id,
-      input: [{ type: 'text', text, text_elements: [] }],
-    });
-    return until(
-      async () => {
-        const { thread: t } = await rpc.request('thread/read', {
-          threadId: thread.id,
-          includeTurns: true,
-        });
-        return t.turns.find((x) => x.id === turn.id && x.status !== 'inProgress');
-      },
-      'Codex model turn',
-      90000,
-    );
-  };
+  const codexTurn = (text) => codexModelTurn(rpc, thread.id, text);
   store = await openReceiptStore(join(root, 'state.sqlite'));
   hub = new AgentHub(
     [new CodexAdapter({ rpc }), new ClaudeAdapter({ discover, nativeMessaging: true })],

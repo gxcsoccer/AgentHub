@@ -108,6 +108,8 @@ agenthub serve --config /ABS/hub.json --access-file /ABS/access.json \
 
 ## 模型工具与诊断
 
+发现返回 `peers` 和 `gaps`，后者列出因后端错误、游标重复或超过 10 页/1,000 个会话而省略的实例；其他实例仍可用。别名仅查询对应 harness，且必须完整发现其授权实例才能消除重名歧义；存在缺口时可用完整地址发送。激活仅核验本地身份，不依赖其他实例发现。CLI 消息使用 `--message='...'`，以支持以 `-` 开头的内容。
+
 | 工具          | 输入                                    | 行为                                                                    |
 | ------------- | --------------------------------------- | ----------------------------------------------------------------------- |
 | `list_peers`  | 无                                      | 返回授权范围内的地址、名称、状态和能力，不读取历史                      |
@@ -124,9 +126,9 @@ agenthub connections --url http://127.0.0.1:3211 --token-file /ABS/owner.token
 
 该诊断仅限所有者，显示历史绑定和 profile 开关，不输出凭证。绑定不是存活信号：每次调用依赖原生发现和进程身份，SessionEnd 提供额外结束证据。本版没有租约。
 
-Hub 将绑定、hook 证据和业务 token 的哈希保存在现有 SQLite；正常重启后仍检查进程身份。业务凭证最长 24 小时，到期的调用失败，下一次调用重新登记；写操作不会因凭证过期而自动重试。更改 profile 的 `epoch` 或 token 后重启 Hub 可撤销旧凭证；授权配置重启后按新 grants 执行，`enabled:false` 禁用该入口。注册表三类记录各上限 4096，满时返回 429；历史绑定/hook 的自动回收尚未实现。内存模式不能跨重启保存登记。
+Hub 将绑定、hook 证据和业务 token 的哈希保存在现有 SQLite；正常重启后仍检查进程身份。业务凭证最长 24 小时。登记返回 `expiresAt`，helper 在过期后的下一次操作前刷新缓存凭证。服务端明确返回发送前的 `credential_expired` 时，也允许重新登记并重试一次，保留原消息 ID、载荷和期限。撤销授权、未知凭证和网络不确定不会自动重试。更改 profile 的 `epoch` 或 token 后重启 Hub 可撤销旧凭证；授权配置重启后按新 grants 执行，`enabled:false` 禁用该入口。注册表三类记录各上限 4096，满时返回 429；历史绑定/hook 的自动回收尚未实现。内存模式不能跨重启保存登记。
 
-同一 OS 用户是信任边界；这些检查防止误绑定，不隔离同用户恶意进程。`/clear` 后旧请求的回程仍指向旧 UUID，投递失败记录为原请求的 `forwardError`。缺少有效 SessionStart 或原生目录尚未刷新时拒绝调用；目前不自动重放失败 hook。迟到回复沿用原请求期限，超期不会获得新的回程窗口，可在发起时指定较长期限。
+同一 OS 用户是信任边界；这些检查防止误绑定，不隔离同用户恶意进程。`/clear` 后旧请求的回程仍指向旧 UUID，投递失败记录为原请求的 `forwardError`。缺少有效 SessionStart 或原生目录尚未刷新时拒绝调用；目前不自动重放失败 hook。新的回复在原请求到期时或到期后返回 `request_expired`，不确认接受或转发；已按时接受的相同回复仍可幂等确认。可在发起时指定较长期限，没有独立回程窗口。
 
 ## 验证
 
@@ -178,7 +180,7 @@ agenthub connect --harness codex --instance local --session-id THREAD_UUID \
 2. 读取目标 App Server 的有效配置和基础 user 层，用原生版本号调用 `config/value/write`。已有或覆盖层的同名入口不同则报冲突，不替换；启动命令一致时保留额外设置，包括工具权限。不会选中 profile 专属 user 层写入。
 3. 必要时调用原生 MCP reload。**激活范围是整个 App Server 实例**，包括它的其他已加载线程；不修改沙箱、工具权限或审批配置。
 4. 核对目标 thread 的原生 MCP 清单、三个工具和 helper 启动标识。需要登记时，仅通过原生 MCP API 调用一次连接器的 **`list_peers`**。这是所有者接入动作中的只读握手，不启动模型轮次、不恢复会话，也不发送协作任务；不是后台探测。
-5. 输出单个 JSON：连接及当前身份都核验后退出 `0`；尚未就绪退出 `2`；配置冲突、授权不足、无法自动激活等退出 `1`。`verificationMethod` 区分只读握手与已有有效绑定。重复连接已就绪目标时保留配置并跳过 reload。
+5. 输出单个 JSON：连接及当前身份都核验后退出 `0`；尚未就绪退出 `2`；配置冲突、授权不足、无法自动激活等退出 `1`。`verificationMethod` 区分只读握手与已有有效绑定。重复连接已就绪目标时保留配置并跳过 reload。同一 adapter 的并发安装串行执行；配置未变且仍在启动或上次 reload 结果不确定时，实例内有 30 秒 reload 冷却。冷却后由下一次所有者 connect 再尝试，不在后台重载。目标就绪检查会依次检查该实例所有已启用 profile 的不同 MCP server。
 
 helper 从每次请求的 `_meta.threadId` 取来源；存在 `_meta.sessionId` 时要求一致。原生 API 直接调用实测只提供 threadId。模型参数不能填写来源。helper 在 MCP version 中公布随机连接 ID，Hub 与选定实例/thread 的原生清单交叉核对，同时校验进程 PID、启动身份和 UID。旧绑定或另一连接的标识不能证明当前就绪。结果回程固定原生 ID；保留旧动态 `agenthub_reply` 兼容路径，但本连接器不依赖它，也无需 `thread/resume` 订阅。
 
@@ -227,13 +229,15 @@ CLI 自行取得 PID 和当前 `CLAUDE_CODE_SESSION_ID`。Hub 独立向上核验
 
 ```sh
 agenthub agent --connector-profile /ABS/client.json list-peers
-agenthub agent --connector-profile /ABS/client.json ask --to @codex/reviewer --message 'Review the change'
-agenthub agent --connector-profile /ABS/client.json reply --request REQUEST_UUID --message 'Review complete'
+agenthub agent --connector-profile /ABS/client.json ask --to @codex/reviewer --message='Review the change'
+agenthub agent --connector-profile /ABS/client.json reply --request REQUEST_UUID --message='Review complete'
 ```
 
 来源和回复路线均由 Hub 推导。请求默认一小时、最多四小时，可用 `--deadline-seconds` 调整；结果仍异步返回且无需确认。正文必须按 shell 数据正确引用，不能将收到的正文直接作为命令执行。
 
-同一 host/profile/目标的重复 `connect` 查询复用激活 ID，不重复唤醒模型；正常 Hub 重启后也保留。激活窗口为 10 分钟，超时或不确定提交不会自动重发。核查旧回执后，所有者可加 `--retry-activation` 显式创建新握手；未到期时拒绝提前重发。注册表上限为 256 条，自动回收仍待补。`/clear` 后需要按新 UUID 接入；新 CLI 进程取得的新身份无需 SessionStart hook。旧请求的回程继续固定旧 UUID。
+同一 host/profile/目标的重复 `connect` 查询复用激活 ID，不重复唤醒模型；正常 Hub 重启后也保留。激活窗口为 10 分钟，超时或不确定提交不会自动重发。明确的 `failed/rejected` 投递返回 `phase: activation_failed`、`activationStatus` 和可用的 `activationError`；普通 connect 保留这一结果，所有者核查后可立即加 `--retry-activation` 显式重试。等待中或结果不确定的提交仍需等 10 分钟期限结束，才允许显式重试。
+
+注册表最多保留 256 条完整记录，容量满时回收已过期记录。持久保存的固定 64 KiB Bloom filter 记住已回收的 key，防止回收后静默重发。再次连接已回收 key 返回 `activation_retry_required`，需显式 `--retry-activation`；过滤器误判也只会保守地要求显式重试。已回收的核验记录不再证明就绪。注册表读取 v1，写入时升级为 v2；旧版本拒绝 v2，回滚需使用升级前状态副本。历史 binding/hook 的回收仍单独待办。`/clear` 后需要按新 UUID 接入；新 CLI 进程取得的新身份无需 SessionStart hook。旧请求的回程继续固定旧 UUID。
 
 已测入口为 macOS + Claude CLI 2.1.318 的隔离交互终端。测试由所有者预先授权精确 CLI 命令，不证明任意工作会话、桌面/SDK 或其他平台都能无审批接入。复现与边界见[验证记录](VERIFICATION.zh-CN.md)：
 

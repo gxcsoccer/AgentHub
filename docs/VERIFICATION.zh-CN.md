@@ -209,3 +209,13 @@ Node 26.12.1 上 `npm run check` 通过 97 项 AgentHub、41 项原 Bridge、七
 真实 ACP 使用 Claude 2.1.318 / Codex 0.166.0，七项通过，确认后代退出并报告 `credentialsRemoved: true`。独立原生后端使用 Claude 2.1.318、Codex 0.166.0 / 0.165.0 和新监督进程，七项通过。私有报告为 `.local/verification/review-followup-acp-live.json`、`review-followup-independent-backends.json`。安装包再次通过五个导出入口、两个 CLI、HTTP、SQLite 和空事件游标恢复验证。原生协议和负载代码未变，本次未重跑完整版本矩阵和 30 分钟合成负载；兼容性运行器的新命令包装由确定性命令测试覆盖，没有将其描述成重新完成全部原生矩阵。
 
 最后的诊断修复：`npm run check` 通过 159 项测试（97 项 AgentHub、41 项 Bridge、21 项脚本测试）。新增三项隔离进程用例，验证二次清理失败时仍保留原始命令／启动异常和 stderr，且单独清理失败仍会报错。保留三秒宽限期，因为主命令退出不能证明后代完成清理。本次仅修改错误报告，未重跑真实模型验收和长时间负载。
+
+## 连接器 PR 评审修复（2026-11-05）
+
+回归测试覆盖九条意见：无关的大目录/离线实例返回发现缺口，不再阻断 Claude 别名或激活；同 harness 发现不完整时仍拒绝无法消除歧义的别名；新的迟到回复在确认接受前拒绝；以 `-` 开头的 CLI 消息可完成 ask/reply；failed/rejected 激活可见且可显式重试，unknown 保留原意图；过期激活记录回收后仍保持有界防重发；凭据刷新保留消息 ID/期限且不重试不确定投递；Codex 检查多个 profile；重复/并发 connect 避免连续 reload；一次 CLI 登记加完整地址 ask 使用三次原生查询，保留发送前的新核验。旧激活记录从 v1 升级 v2，并验证防重发过滤器饱和时仍保守地要求显式重试。
+
+`npm run check` 通过 208 项（AgentHub 144、保留的 bridge 41、runner 安全测试 23）。源码覆盖率：行 96.97%、分支 88.75%、函数 94.83%。打包安装验证通过五个导出、两个 CLI、HTTP、SQLite 和事件游标恢复。大目录、凭据过期、容量、多 profile 与 reload 冷却使用确定性 fixture，未测量它们的原生规模/耗时影响。
+
+macOS 真实隔离验收通过 Claude CLI 的 10 项（Claude 2.1.318），包括 Bash 不可用、重启、等待期间用户插话和 clear 隔离；Claude CLI / Codex MCP 双向验收通过 7 项（Codex 0.166.0）。均确认自有进程退出、测试 thread 归档和临时目录/认证清理。私有报告：`.local/verification/pr2-fix-connector-claude-cli-live.json` 与 `pr2-fix-connector-codex-claude-cli-live.json`。
+
+首次跨 harness 尝试在模型调用工具前停止：早期 Codex `thread/read` 返回空的 interrupted turn，且没有完成时间。原 runner 将任何非 inProgress 快照视为终态。现在先等待匹配的原生 `turn/completed` 通知，再读取 completed 历史；通知可先于启动响应，真实中断/超时仍报错且不重发。新增两个 runner 测试覆盖该竞态及监听清理。首次失败和自有资源清理证据保留于私有 `pr2-fix-first-connector-codex-claude-cli-live.json`；新的隔离运行通过全部 7 项。本次未重跑 Windows、相邻版本矩阵和长时合成负载。

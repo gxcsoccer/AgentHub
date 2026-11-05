@@ -269,7 +269,14 @@ export const openApi = {
           'Enrollment credential only. Validates process start identity and same OS user. Claude MCP uses direct parent/native UUID evidence; owner-enabled Claude CLI transport independently checks up to eight ancestor processes and their start identities against native discovery. Codex cross-checks per-call threadId and connectionId against the loaded root and native MCP inventory. If sessionId is present it must match threadId. Returns a restricted process credential (CLI: 60 seconds), never owner API access.',
         requestBody: body(connectorEvidence),
         responses: responses(
-          object({ token: string, binding: { type: 'object' } }, ['token', 'binding']),
+          object(
+            {
+              token: string,
+              binding: { type: 'object' },
+              expiresAt: { type: 'string', format: 'date-time' },
+            },
+            ['token', 'binding', 'expiresAt'],
+          ),
         ),
       },
     },
@@ -297,7 +304,7 @@ export const openApi = {
       post: {
         operationId: 'connectorCall',
         description:
-          'Process credential only. Source and reply route are derived from current native identity and existing grants. ask expiresAt must be within four hours. No automatic write retry. Result messages cannot be replied to.',
+          'Process credential only. Source and reply route are derived from current native identity and existing grants. list_peers returns peers plus per-instance gaps; aliases only query their harness and require complete discovery. activate verifies local identity independently of peer discovery. ask expiresAt must be within four hours; late replies fail with request_expired. credential_expired is a pre-dispatch 401 and permits one reenrollment and retry of the exact operation. Other failures never automatically replay writes. Result messages cannot be replied to.',
         requestBody: body(
           strictObject({ evidence: connectorEvidence, operation: connectorOperation }),
         ),

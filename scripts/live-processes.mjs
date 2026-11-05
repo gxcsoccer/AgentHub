@@ -185,6 +185,42 @@ export async function isolatedCodexHome(root) {
   );
   return root;
 }
+// Install the observer before turn/start: completion can precede its response.
+// An early thread/read snapshot may label a not-yet-active turn interrupted.
+export async function codexModelTurn(rpc, threadId, text, timeoutMs = 90000) {
+  const completed = new Map();
+  const observe = ({ method, params }) => {
+    if (method === 'turn/completed' && params.threadId === threadId)
+      completed.set(params.turn.id, params.turn);
+  };
+  rpc.on('notification', observe);
+  try {
+    const { turn } = await rpc.request('turn/start', {
+      threadId,
+      input: [{ type: 'text', text, text_elements: [] }],
+    });
+    const final = await until(
+      () => completed.get(turn.id),
+      'Codex turn completion event',
+      timeoutMs,
+    );
+    assert.equal(
+      final.status,
+      'completed',
+      `Codex turn ended with ${final.status}: ${JSON.stringify(final.error)}`,
+    );
+    return await until(
+      async () => {
+        const { thread } = await rpc.request('thread/read', { threadId, includeTurns: true });
+        return thread.turns.find((item) => item.id === turn.id && item.status === 'completed');
+      },
+      'Codex completed turn history',
+      timeoutMs,
+    );
+  } finally {
+    rpc.off('notification', observe);
+  }
+}
 export async function startCodex(root, command = 'codex') {
   const home = await isolatedCodexHome(join(root, 'home'));
   const socketPath = join(root, 'control.sock');

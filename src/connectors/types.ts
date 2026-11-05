@@ -1,4 +1,4 @@
-import type { SessionAddress } from '../types.js';
+import type { SessionAddress, ReceiptStatus } from '../types.js';
 
 export interface ProcessIdentity {
   pid: number;
@@ -55,7 +55,9 @@ export interface ConnectorConnectionResult {
   reloaded: boolean;
   activationScope: 'instance' | 'session';
   activationId?: string;
-  phase: 'ready' | 'awaiting_identity' | 'awaiting_connection';
+  phase: 'ready' | 'awaiting_identity' | 'awaiting_connection' | 'activation_failed';
+  activationStatus?: ReceiptStatus;
+  activationError?: { code: string; message: string };
   exitCode: 0 | 2;
   checkedAt: string;
   verificationMethod:

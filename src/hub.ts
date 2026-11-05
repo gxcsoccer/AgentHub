@@ -209,6 +209,12 @@ export class AgentHub {
         throw new HubError('reply_conflict', 'A different reply is already recorded', 409);
       return { request: id, accepted: true, duplicate: true };
     }
+    if (Date.parse(entry.envelope.expiresAt) <= Date.now())
+      throw new HubError(
+        'request_expired',
+        'Request expired; reply was not accepted or forwarded',
+        409,
+      );
     this.apply(this.adapter(responder), {
       messageId: id,
       status: 'replied',

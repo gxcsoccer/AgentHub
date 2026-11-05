@@ -170,6 +170,115 @@ test('MCP-connected Codex replies without a dynamic reply tool or resume attachm
   assert(!f.rpc.calls.some((c) => c.method === 'thread/resume'));
 });
 
+test('Codex target readiness tries all distinct enabled profile servers', async (t) => {
+  const f = await fixture(t),
+    names: string[] = [],
+    original = f.adapter.connectorSession.bind(f.adapter);
+  f.adapter.connectorSession = async (address, name, nonce) => {
+    if (address.sessionId === f.b) names.push(name);
+    return original(address, name, nonce);
+  };
+  const service = new ConnectorService(
+    f.hub,
+    [
+      {
+        id: 'disabled',
+        harness: 'codex',
+        instance: 'local',
+        callerId: 'agents',
+        enrollmentToken: 'disabled-'.repeat(8),
+        enabled: false,
+        mcpServerName: 'disabled',
+      },
+      {
+        id: 'absent',
+        harness: 'codex',
+        instance: 'local',
+        callerId: 'agents',
+        enrollmentToken: 'absent-'.repeat(8),
+        mcpServerName: 'absent',
+      },
+      {
+        id: 'duplicate',
+        harness: 'codex',
+        instance: 'local',
+        callerId: 'agents',
+        enrollmentToken: 'duplicate-'.repeat(8),
+        mcpServerName: 'absent',
+      },
+      {
+        id: 'codex',
+        harness: 'codex',
+        instance: 'local',
+        callerId: 'agents',
+        enrollmentToken: f.token,
+      },
+    ],
+    {
+      inspect: async (pid) => ({
+        pid,
+        ppid: pid === 201 ? 301 : 201,
+        uid: process.getuid!(),
+        start: 'start-' + pid,
+      }),
+    },
+  );
+  const c = await service.enroll(f.token, f.evidence());
+  await service.call(c.token, f.evidence(), {
+    operation: 'ask',
+    messageId: randomUUID(),
+    to: { harness: 'codex', instance: 'local', sessionId: f.b },
+    message: 'Review',
+    expiresAt: new Date(Date.now() + 60000).toISOString(),
+  });
+  assert.deepEqual(names, ['absent', 'agenthub']);
+  assert.equal(f.rpc.calls.filter((c) => c.method === 'turn/start').length, 1);
+});
+
+test('pending Codex installations coalesce reloads, including uncertain reload outcomes', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.now() });
+  const f = await fixture(t),
+    address = { harness: 'codex', instance: 'local', sessionId: f.a },
+    config = { command: '/node', args: ['/cli', 'mcp'] };
+  f.rpc.handlers.set('config/read', () => ({
+    config: { mcp_servers: { agenthub: config } },
+    layers: [
+      {
+        name: { type: 'user', file: '/private/config.toml' },
+        version: 'v1',
+        config: { mcp_servers: { agenthub: config } },
+      },
+    ],
+  }));
+  f.rpc.handlers.set('mcpServerStatus/list', () => ({ data: [], nextCursor: null }));
+  let reloads = 0;
+  f.rpc.handlers.set('config/mcpServer/reload', () => {
+    reloads++;
+    return {};
+  });
+  const first = await Promise.all([
+    f.adapter.installConnector(address, 'agenthub', config),
+    f.adapter.installConnector(address, 'agenthub', config),
+  ]);
+  assert.deepEqual(
+    first.map((x) => x.reloaded),
+    [true, false],
+  );
+  assert.equal(reloads, 1);
+  assert.equal((await f.adapter.installConnector(address, 'agenthub', config)).reloaded, false);
+  t.mock.timers.tick(30000);
+  f.rpc.handlers.set('config/mcpServer/reload', () => {
+    reloads++;
+    throw Error('Lost reload response');
+  });
+  await assert.rejects(
+    f.adapter.installConnector(address, 'agenthub', config),
+    /Lost reload response/,
+  );
+  assert.equal((await f.adapter.installConnector(address, 'agenthub', config)).reloaded, false);
+  assert.equal(reloads, 2);
+});
+
 test('Codex installation uses versioned native config writes, preserves conflicts and skips a ready reinstall', async (t) => {
   const f = await fixture(t),
     address = { harness: 'codex', instance: 'local', sessionId: f.a },

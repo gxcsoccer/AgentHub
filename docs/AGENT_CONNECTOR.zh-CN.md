@@ -339,6 +339,6 @@ Codex connect 已在已有、空闲根线程上完成配置版本校验、热加
 
 所有者可显式配置 Claude profile 的 `transport: cli`，同一 `agenthub connect` 通过原生 peer 消息请求一次本地身份握手。它不安装 skill/MCP、不依赖目录监听或 hook；模型使用已有 Bash 执行受限 `agenthub agent list-peers / ask / reply`，共享原有身份、grants、request/result 和期限语义。
 
-Hub 独立核验最多 8 层进程祖先与原生 UUID，CLI 每次启动读取当前身份。激活 ID 持久保存，只有目标原生进程链中的真实 CLI 调用可以完成它；文本回复、HTTP accepted 或历史 binding 均不足以返回成功。重复 connect 不重复发消息，过期后仅通过显式 retry 创建新握手。注册表上限 256 条，自动回收后置。
+Hub 独立核验最多 8 层进程祖先与原生 UUID，CLI 每次启动读取当前身份。激活 ID 持久保存，只有目标原生进程链中的真实 CLI 调用可以完成它；文本回复、HTTP accepted 或历史 binding 均不足以返回成功。重复 connect 不重复发消息；过期或明确 failed/rejected 后，仅通过显式 retry 创建新握手。注册表达到 256 条时回收过期激活记录，持久保存有界防重发标记；再次访问已回收 key 需要显式重试。失败阶段、Bloom filter 的保守误判和 schema 迁移见接入说明。
 
 该路径会启动或加入模型轮次，权限仍由目标 Claude 决定。没有 Bash、收件被拒绝、命令需审批或模型不执行时返回未核验。`cliVerified` 与 `toolsConnected` 分开报告；不会将 CLI 能力描述为新 MCP 工具已加载。真实验收通过两 Claude 的 10 项检查（含 Bash 不可用的反例）及 Claude CLI ↔ Codex MCP 的 7 项检查。适用范围及失败尝试见[验证记录](VERIFICATION.zh-CN.md)，操作见[接入说明](CONNECTOR_SETUP.zh-CN.md)。

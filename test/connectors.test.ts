@@ -193,6 +193,48 @@ test('two bound sources ask and reply without model-supplied source or return ro
   );
 });
 
+test('expired connector replies fail before acknowledgement while prior replies remain idempotent', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.now() });
+  const f = await fixture(t),
+    ca = await f.service.enroll(token, f.ea),
+    cb = await f.service.enroll(token, f.eb);
+  const request = {
+    operation: 'ask',
+    messageId: randomUUID(),
+    to: f.b,
+    message: 'Review',
+    expiresAt: new Date(Date.now() + 1000).toISOString(),
+  };
+  await f.service.call(ca.token, f.ea, request);
+  const answered = { ...request, messageId: randomUUID() };
+  await f.service.call(ca.token, f.ea, answered);
+  await f.service.call(cb.token, f.eb, {
+    operation: 'reply',
+    request: answered.messageId,
+    message: 'On time',
+  });
+  await new Promise((r) => setImmediate(r));
+  t.mock.timers.tick(1000);
+  await assert.rejects(
+    f.service.call(cb.token, f.eb, {
+      operation: 'reply',
+      request: request.messageId,
+      message: 'Late',
+    }),
+    (e: unknown) => e instanceof HubError && e.code === 'request_expired',
+  );
+  assert.equal(f.hub.receipt(request.messageId).status, 'accepted');
+  assert.equal(f.hub.receipt(request.messageId).reply, undefined);
+  assert.equal(f.hub.receipt(request.messageId).forwardError, undefined);
+  const duplicate = await f.service.call(cb.token, f.eb, {
+    operation: 'reply',
+    request: answered.messageId,
+    message: 'On time',
+  });
+  assert.deepEqual(duplicate, { request: answered.messageId, accepted: true, duplicate: true });
+  assert.equal(f.adapter.calls.length, 3, 'two requests and only the on-time result');
+});
+
 test('clear requires fresh lifecycle evidence, retains in-flight address and blocks old result handles', async (t) => {
   const f = await fixture(t);
   const ca = await f.service.enroll(token, f.ea),
