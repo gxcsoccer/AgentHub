@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Add owner-only `listMessages` (library, `GET /v1/messages`) with an incremental cursor, request and reply text, and a `gap` flag when retained changes were removed.
+- Add owner-only `clearMessages` (library, `DELETE /v1/messages`). It removes finished messages and retained events atomically, keeps requests still waiting for a reply or forward, and reports both counts. Connector bindings and credentials are unaffected.
+
 ## 0.3.0 — 2026-11-05
 
 - Add plugin-free local MCP setup with absolute launch paths, scoped caller credentials and inherited-owner-token removal. A local Doubao CLI plugin and allowlisted ZIP packaging remain optional; bilingual guides cover both paths.

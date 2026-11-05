@@ -56,6 +56,20 @@ export class EventLog extends EventEmitter {
   get cursor() {
     return `${this.epoch}:${this.sequence}`;
   }
+  /** Sequence the next published event will take. */
+  get nextSequence() {
+    return this.sequence + 1;
+  }
+  get position() {
+    return { epoch: this.epoch as string, sequence: this.sequence };
+  }
+  /** Forgets retained events. Older cursors then report event_cursor_expired. */
+  truncate(commit: (state: Omit<EventSnapshot, 'events'>) => void) {
+    commit({ epoch: this.epoch, sequence: this.sequence, dropped: this.sequence });
+    this.entries = [];
+    this.bytes = 0;
+    this.dropped = this.sequence;
+  }
   get durable() {
     return Boolean(this.store?.appendEvent);
   }

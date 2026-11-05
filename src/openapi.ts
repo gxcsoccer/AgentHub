@@ -405,6 +405,22 @@ export const openApi = {
       },
     },
     '/v1/messages': {
+      get: {
+        operationId: 'listMessages',
+        description:
+          'Owner only. Retained messages with envelope and receipt, oldest change first. A message reappears whenever it changes, so upsert by messageId. gap means changes after the cursor were removed by expiry or clearing and cannot be returned. Retention is bounded, so this is not a long-term archive.',
+        parameters: [
+          param('cursor', string),
+          param('limit', { type: 'integer', minimum: 1, maximum: 500, default: 100 }),
+        ],
+        responses: responses({ type: 'object' }),
+      },
+      delete: {
+        operationId: 'clearMessages',
+        description:
+          'Owner only. Removes finished messages and all retained events. Requests still waiting for a reply or a forward are kept and counted in retained. Connector bindings and credentials are unaffected. Older event cursors report event_cursor_expired.',
+        responses: responses({ type: 'object' }),
+      },
       post: {
         operationId: 'sendMessage',
         description:

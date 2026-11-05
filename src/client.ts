@@ -4,6 +4,7 @@ import type {
   MessageInput,
   Page,
   PageQuery,
+  Envelope,
   Receipt,
   SessionAddress,
   SessionInfo,
@@ -115,6 +116,17 @@ export class AgentHubClient {
       {},
       { address, ...options },
     );
+  }
+  listMessages(query: { cursor?: string; limit?: number } = {}) {
+    return this.request<{
+      data: { envelope: Envelope; receipt: Receipt }[];
+      nextCursor: string;
+      hasMore: boolean;
+      gap: boolean;
+    }>('GET', '/v1/messages', query);
+  }
+  clearMessages() {
+    return this.request<{ removed: number; retained: number }>('DELETE', '/v1/messages');
   }
   connections() {
     return this.request<{ bindings: ConnectorBinding[]; liveness: string }>(

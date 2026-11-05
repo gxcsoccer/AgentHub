@@ -14,6 +14,8 @@ export interface StoredReceipt {
   expires: number;
   phase: 'reserved' | 'dispatching' | 'settled';
   forwardState: 'none' | 'ready' | 'reserved' | 'done' | 'blocked';
+  /** Event sequence of the last change. Absent on records from older versions. */
+  sequence?: number;
 }
 export interface AdapterState {
   get(key: string): Json | undefined;
@@ -25,6 +27,7 @@ export interface ReceiptStore {
   remove(ids: string[]): void;
   getMeta(key: string): Json | undefined;
   setMeta(key: string, value: Json): void;
+  clearMessages?(ids: string[], state: Omit<EventSnapshot, 'events'>, removedThrough: Json): void;
   loadEvents?(): EventSnapshot | undefined;
   appendEvent?(
     event: HubEvent,
@@ -221,6 +224,25 @@ class SqliteReceiptStore implements ReceiptStore {
         stmt.run(id);
         meta.run(`%:outgoing:${id}`);
       }
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+  clearMessages(ids: string[], state: Omit<EventSnapshot, 'events'>, removedThrough: Json) {
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const stmt = this.db.prepare('DELETE FROM receipts WHERE id=?');
+      const meta = this.db.prepare('DELETE FROM metadata WHERE key LIKE ?');
+      for (const id of ids) {
+        stmt.run(id);
+        meta.run(`%:outgoing:${id}`);
+      }
+      // Status events carry reply text. The checkpoint stays so cursors see a gap.
+      this.db.exec('DELETE FROM events');
+      this.setMeta('events:state', state);
+      this.setMeta('messages:removed', removedThrough);
       this.db.exec('COMMIT');
     } catch (error) {
       this.db.exec('ROLLBACK');

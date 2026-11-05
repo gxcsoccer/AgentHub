@@ -195,6 +195,24 @@ export function createHubServer(options: {
       );
       return;
     }
+    if (req.method === 'GET' && url.pathname === '/v1/messages') {
+      sendJson(
+        res,
+        200,
+        await hub.listMessages(
+          {
+            ...(q.cursor !== undefined ? { cursor: q.cursor } : {}),
+            ...(q.limit !== undefined ? { limit: Number(q.limit) } : {}),
+          },
+          callerId,
+        ),
+      );
+      return;
+    }
+    if (req.method === 'DELETE' && url.pathname === '/v1/messages') {
+      sendJson(res, 200, await hub.clearMessages(callerId));
+      return;
+    }
     if (req.method === 'GET' && url.pathname.startsWith('/v1/messages/')) {
       const id = decodePath(url.pathname.slice('/v1/messages/'.length));
       sendJson(
