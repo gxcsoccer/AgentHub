@@ -1,8 +1,12 @@
 # 验证说明
 
-## 豆包本地 CLI 接入（2026-11-05，开发分支）
+## 豆包本地 MCP / CLI 接入（2026-11-05，开发分支）
 
-`npm run check` 通过 219 项测试（核心 151、保留 Bridge 41、脚本 27，含新增豆包测试 4 项）。插件 ZIP 仅含白名单中的 3 个文件，不包含私人凭据。`--run --doubao-cli` 隔离验收通过 13 项检查：原有连接器 8 项，加上真实 Claude/Codex 回复、重复请求复用和 owner 操作拒绝共 5 项。自有进程和临时凭据均已清理。实际验证范围为 macOS Claude 2.1.318 / Codex 0.166.0 的 CLI 工作流，**不包含豆包宿主加载、工具选择或主动唤醒**。私有报告：`.local/verification/doubao-cli-backends-live.json`。
+`npm run check` 通过 220 项测试（核心 151、保留 Bridge 41、脚本 28，含豆包测试 5 项），覆盖率为行 96.96%、分支 88.66%、函数 94.93%。新增检查实际启动生成配置中的 stdio MCP，验证带空格的路径、可配置端口、继承 owner token 时仍受 caller 授权限制，以及请求/回复、去重和越权拒绝。插件 ZIP 仍仅含 3 个白名单文件，不包含私人凭据。
+
+本次 `--run --doubao-mcp` 隔离验收通过 **15 项检查**：原有连接器 8 项，加上真实 stdio MCP 发现、Claude/Codex 回复、重复请求复用、owner 操作拒绝，以及 MCP 进程重连后的回执查询和目标越权拒绝。此前 `--run --doubao-cli` 的 13 项检查也已通过；本次新增的是 MCP 路径。两次均仅使用自有测试会话，进程和临时凭据已清理。环境为 macOS Claude 2.1.318 / Codex 0.166.0。私有报告：`.local/verification/doubao-mcp-backends-live.json`、`doubao-cli-backends-live.json`。
+
+**这些结果不包含豆包宿主加载、模型工具选择、busy 场景下的宿主交互或主动唤醒。** 本机豆包工作 2.35.15 的设置和插件入口已只读检查，尚未确认本地 stdio MCP 配置入口，未导入配置或改变工作会话。宿主端到端验收仍待完成。
 
 ## 0.2.0 发布验证（2026-11-05）
 

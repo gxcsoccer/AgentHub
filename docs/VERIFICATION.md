@@ -1,8 +1,12 @@
 # Verification
 
-## Doubao local CLI integration (2026-11-05, development branch)
+## Doubao local MCP / CLI integration (2026-11-05, development branch)
 
-`npm run check` passes 219 tests (151 core, 41 retained bridge, 27 script checks, including four new Doubao cases). The plugin ZIP contains exactly three allowlisted files and excludes private credentials. The isolated `--run --doubao-cli` acceptance passes 13 checks: eight existing connector checks and five added scoped CLI checks covering real Claude and Codex replies, duplicate-request reuse and owner-operation denial. All owned processes and temporary credentials were cleaned up. This verifies the CLI workflow against macOS Claude 2.1.318 / Codex 0.166.0; it does **not** verify Doubao host loading, tool selection or unsolicited wake-up. Private report: `.local/verification/doubao-cli-backends-live.json`.
+`npm run check` passes 220 tests (151 core, 41 retained bridge, 28 script checks, including five Doubao cases). Coverage is 96.96% lines, 88.66% branches and 94.93% functions. Added checks launch stdio MCP through the generated configuration and cover paths with spaces, custom ports, caller scoping despite inherited owner credentials, request/reply correlation, deduplication and access denial. The plugin ZIP still contains exactly three allowlisted files and excludes private credentials.
+
+The new isolated `--run --doubao-mcp` acceptance passes **15 checks**: eight existing connector checks plus real stdio MCP discovery, Claude/Codex replies, duplicate reuse, owner-operation denial, and receipt lookup and target denial after restarting the MCP process. The earlier `--run --doubao-cli` acceptance passed 13 checks; this run adds the MCP path. Both runs used only owned test sessions and cleaned up their processes and temporary credentials. Environment: macOS Claude 2.1.318 / Codex 0.166.0. Private reports: `.local/verification/doubao-mcp-backends-live.json` and `doubao-cli-backends-live.json`.
+
+**This does not verify Doubao host loading, model tool selection, host behavior while busy or unsolicited wake-up.** The settings and plugin entry in local Doubao Work 2.35.15 were inspected without changing configuration. Its local stdio MCP configuration entry remains unconfirmed; no configuration was imported or working conversation changed. Host end-to-end acceptance remains pending.
 
 ## 0.2.0 release verification (2026-11-05)
 

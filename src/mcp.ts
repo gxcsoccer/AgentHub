@@ -94,7 +94,7 @@ export function createMcpServer(client: AgentHubClient, originName = 'AgentHub M
     'send_message',
     {
       description:
-        'Send external content to a running session. Explicit tool_output (Codex) or peer_message (Claude); never user input. Reuse messageId only for the identical payload. Acceptance is not proof of a reply. Optional replyTo forwards the first correlated reply once.',
+        'Send a user-authorized request to a discovered running session. Set messageKind=request when asking for a reply; result is a terminal notification. Use tool_output for Codex or peer_message for Claude. Preserve the UUID and identical payload on retries. Poll get_message_status for the answer; acceptance alone is not a reply. Omit replyTo for an external client without a verified native return session. There is no automatic client wake-up.',
       inputSchema: z.object({
         messageId: z.string().uuid(),
         messageKind: z.enum(['request', 'result']).optional(),
@@ -115,7 +115,7 @@ export function createMcpServer(client: AgentHubClient, originName = 'AgentHub M
     'get_message_status',
     {
       description:
-        'Read delivery evidence and correlated reply; optionally wait up to 60 seconds. Unknown delivery is not a reason to resend with a new ID.',
+        'Read delivery evidence and the correlated reply; optionally wait up to 60 seconds. Only status=replied with reply.text is an answer. For an interactive request, poll at most three times with waitMs=30000, then report the pending messageId so the user can check later. Unknown delivery is not a reason to resend with a new ID. Results do not wake this client automatically.',
       inputSchema: z.object({
         messageId: z.string().uuid(),
         waitMs: z.number().int().min(0).max(60000).default(0),

@@ -1,12 +1,20 @@
 {
   "mcpServers": {
     "agenthub": {
-      "command": "agenthub",
-      "args": ["mcp", "--origin-name", "Doubao Work"],
-      "env": {
-        "AGENTHUB_URL": "http://127.0.0.1:3211",
-        "AGENTHUB_TOKEN_FILE": "/ABSOLUTE/PATH/TO/.agenthub/token"
-      }
+      "command": "/usr/bin/env",
+      "args": [
+        "-u",
+        "AGENTHUB_TOKEN",
+        "/ABSOLUTE/PATH/TO/node",
+        "/ABSOLUTE/PATH/TO/AgentHub/dist/src/cli.js",
+        "mcp",
+        "--url",
+        "http://127.0.0.1:3214",
+        "--token-file",
+        "/ABSOLUTE/PATH/TO/.agenthub/doubao/caller.token",
+        "--origin-name",
+        "Doubao Work"
+      ]
     }
   }
 }

@@ -12,6 +12,8 @@ import { setupDoubao } from '../scripts/setup-doubao.mjs';
 import { packageDoubao, pluginFiles } from '../scripts/package-doubao.mjs';
 import { AgentHub, createHubServer, loadAccessFile } from '../dist/src/index.js';
 import { loadConnectorProfiles } from '../dist/src/connectors/config.js';
+import { Client } from '@modelcontextprotocol/client';
+import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 const exec = promisify(execFile);
 const cli = fileURLToPath(new URL('../dist/src/cli.js', import.meta.url));
 const target = { harness: 'claude', instance: 'local', sessionId: randomUUID() };
@@ -35,6 +37,7 @@ test('Doubao setup creates private scoped credentials without starting or overwr
     'connectors.json',
     'claude-enrollment.token',
     'claude-client.json',
+    'mcp.json',
   ])
     assert.equal((await stat(join(directory, name))).mode & 0o777, 0o600);
   const owner = await readFile(join(directory, 'owner.token'), 'utf8');
@@ -60,6 +63,40 @@ test('Doubao setup creates private scoped credentials without starting or overwr
   });
   await assert.rejects(setupDoubao({ directory, targets: [target] }), { code: 'EEXIST' });
   assert.equal(await readFile(join(directory, 'caller.token'), 'utf8'), caller);
+});
+test('direct MCP setup uses literal absolute argv and scoped credentials without secrets or a plugin', async (t) => {
+  const root = await folder(t),
+    directory = join(root, 'profile with spaces');
+  const result = await setupDoubao({ directory, targets: [target], port: 3244 });
+  const config = JSON.parse(await readFile(join(directory, 'mcp.json'), 'utf8'));
+  const server = config.mcpServers.agenthub;
+  assert.equal(server.command, '/usr/bin/env');
+  assert.deepEqual(server.args, [
+    '-u',
+    'AGENTHUB_TOKEN',
+    process.execPath,
+    cli,
+    'mcp',
+    '--url',
+    'http://127.0.0.1:3244',
+    '--token-file',
+    join(directory, 'caller.token'),
+    '--origin-name',
+    'Doubao Work',
+  ]);
+  assert.equal(result.mcpConfigPath, join(directory, 'mcp.json'));
+  assert.equal(result.startArgv[result.startArgv.indexOf('--port') + 1], '3244');
+  const profile = JSON.parse(await readFile(join(directory, 'claude-client.json'), 'utf8'));
+  assert.equal(profile.url, 'http://127.0.0.1:3244');
+  for (const token of ['caller.token', 'owner.token', 'claude-enrollment.token'])
+    assert(
+      !JSON.stringify(config).includes((await readFile(join(directory, token), 'utf8')).trim()),
+    );
+  for (const port of [0, -1, 65536, 1.5, '3214'])
+    await assert.rejects(
+      setupDoubao({ directory: join(root, 'bad'), targets: [target], port }),
+      /port/i,
+    );
 });
 test('Doubao setup rejects wildcard, unverified harness and invalid targets before creating credentials', async (t) => {
   const root = await folder(t);
@@ -188,4 +225,50 @@ test('Doubao workflow uses real CLI and scoped HTTP: request, reply, duplicate a
   await assert.rejects(run(['send', '--message-file', file]));
   await assert.rejects(run(['connections']));
   assert.equal(adapter.calls.length, 1);
+
+  // Exercise the generated launch configuration, with only its ephemeral test URL substituted.
+  const config = JSON.parse(await readFile(join(directory, 'mcp.json'), 'utf8'));
+  const server = config.mcpServers.agenthub;
+  server.args[server.args.indexOf('--url') + 1] = url;
+  const client = new Client({ name: 'doubao-direct-mcp-fixture', version: '1' });
+  t.after(() => client.close());
+  await client.connect(
+    new StdioClientTransport({
+      ...server,
+      env: { ...process.env, AGENTHUB_TOKEN: owner },
+      stderr: 'pipe',
+    }),
+  );
+  assert.equal((await client.listTools()).tools.length, 7);
+  const call = (name, args = {}) => client.callTool({ name, arguments: args });
+  const listing = await call('list_sessions', { harness: 'claude' });
+  assert.equal(
+    listing.structuredContent.result.data.length,
+    1,
+    'inherited owner token must not broaden discovery',
+  );
+  const request = {
+    messageId: randomUUID(),
+    messageKind: 'request',
+    to: target,
+    delivery: 'peer_message',
+    text: 'direct MCP request',
+  };
+  assert(!(await call('send_message', request)).isError);
+  const result = await call('get_message_status', { messageId: request.messageId, waitMs: 1000 });
+  assert.equal(result.structuredContent.result.status, 'replied');
+  assert.equal(adapter.calls[1].origin.name, 'Doubao Work');
+  assert.equal(adapter.calls[1].origin.session, undefined);
+  assert(!(await call('send_message', request)).isError);
+  assert.equal(adapter.calls.length, 2);
+  assert(
+    (
+      await call('send_message', {
+        ...request,
+        messageId: randomUUID(),
+        to: { ...target, sessionId: randomUUID() },
+      })
+    ).isError,
+  );
+  assert.equal(adapter.calls.length, 2);
 });

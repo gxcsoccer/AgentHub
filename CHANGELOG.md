@@ -2,8 +2,8 @@
 
 ## Unreleased
 
-- Add a Doubao Work local CLI plugin with a bilingual setup guide, private target-scoped configuration generation and allowlisted ZIP packaging. Runtime commands use AgentHub 0.2.0.
-- Add CLI/HTTP workflow tests and opt-in isolated Claude/Codex backend acceptance. Doubao host loading, native identity and unsolicited wake-up remain unverified or unimplemented; no store publication is performed.
+- Add plugin-free local MCP setup with absolute launch paths, scoped caller credentials and inherited-owner-token removal. A local Doubao CLI plugin and allowlisted ZIP packaging remain optional; bilingual guides cover both paths.
+- Add CLI/stdio MCP/HTTP workflow tests and opt-in isolated Claude/Codex backend acceptance, including MCP reconnect, deduplication and access denial. Doubao host loading, native identity and unsolicited wake-up remain unverified or unimplemented; no store publication is performed.
 
 ## 0.2.0 — 2026-11-05
 

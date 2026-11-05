@@ -114,12 +114,13 @@ The daemon persists receipts, normalized payload hashes, reply routes and callba
 ## MCP and Doubao
 
 ```sh
-agenthub mcp --origin-name 'Doubao Work'
+env -u AGENTHUB_TOKEN agenthub mcp --origin-name 'Doubao Work' \
+  --url http://127.0.0.1:3214 --token-file /ABS/PRIVATE/caller.token
 ```
 
 This stdio facade uses the official MCP TypeScript SDK and exposes seven tools: `list_instances`, `list_sessions`, `get_session`, `get_history`, `search_history`, `send_message`, `get_message_status`. It connects to the same local daemon. Approval and lifecycle mutation tools are not exposed to agents.
 
-[MCP configuration template](examples/mcp.json) and [Doubao instructions](docs/DOUBAO.md) are provided. The development branch adds a local CLI plugin, scoped configuration generator and ZIP packaging under `plugins/doubao`; it depends on AgentHub 0.2.0. Execution inside Doubao itself is **not yet verified**. Native Doubao identity, unsolicited wake-up, OpenAPI and MCP Events remain unimplemented.
+[MCP configuration template](examples/mcp.json) and [Doubao instructions](docs/DOUBAO.md) are provided. The development branch generates plugin-free local MCP configuration with absolute paths and scoped caller credentials, runnable directly from a source build. The CLI plugin and ZIP packaging under `plugins/doubao` are optional. Loading and execution inside Doubao itself are **not yet verified**. Native Doubao identity, unsolicited wake-up, OpenAPI and MCP Events remain unimplemented.
 
 ## Verification and limits
 

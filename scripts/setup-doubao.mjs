@@ -1,14 +1,24 @@
 import { randomBytes } from 'node:crypto';
 import { mkdir, writeFile, realpath, lstat, rm } from 'node:fs/promises';
-import { dirname, resolve, join } from 'node:path';
+import { dirname, resolve, join, isAbsolute } from 'node:path';
 import { homedir } from 'node:os';
 import { parseArgs } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { readFile } from 'node:fs/promises';
 
 // Generates a new, isolated Hub configuration. Never edits an existing daemon or host setup.
-export async function setupDoubao({ directory, targets }) {
+export async function setupDoubao({
+  directory,
+  targets,
+  port = 3214,
+  cliPath = fileURLToPath(new URL('../dist/src/cli.js', import.meta.url)),
+}) {
   if (process.platform === 'win32') throw Error('Doubao local setup requires macOS or Linux');
+  if (!Number.isInteger(port) || port < 1 || port > 65535)
+    throw Error('port must be an integer between 1 and 65535');
+  if (!isAbsolute(cliPath) || !(await lstat(cliPath)).isFile())
+    throw Error('Build AgentHub first; cliPath must name an absolute CLI file');
+  const url = `http://127.0.0.1:${port}`;
   if (!Array.isArray(targets) || !targets.length || targets.length > 100)
     throw Error('Provide 1–100 explicit target addresses');
   const groups = new Map();
@@ -35,6 +45,33 @@ export async function setupDoubao({ directory, targets }) {
     const write = (name, value) => writeFile(join(dest, name), value, { flag: 'wx', mode: 0o600 });
     await write('owner.token', randomBytes(32).toString('hex') + '\n');
     await write('caller.token', randomBytes(32).toString('hex') + '\n');
+    await write(
+      'mcp.json',
+      JSON.stringify(
+        {
+          mcpServers: {
+            agenthub: {
+              command: '/usr/bin/env',
+              args: [
+                '-u',
+                'AGENTHUB_TOKEN',
+                process.execPath,
+                cliPath,
+                'mcp',
+                '--url',
+                url,
+                '--token-file',
+                join(dest, 'caller.token'),
+                '--origin-name',
+                'Doubao Work',
+              ],
+            },
+          },
+        },
+        null,
+        2,
+      ) + '\n',
+    );
     const profiles = [];
     for (const harness of groups.keys()) {
       await write(harness + '-enrollment.token', randomBytes(32).toString('hex') + '\n');
@@ -42,7 +79,7 @@ export async function setupDoubao({ directory, targets }) {
         harness + '-client.json',
         JSON.stringify(
           {
-            url: 'http://127.0.0.1:3214',
+            url,
             harness,
             enrollmentTokenFile: harness + '-enrollment.token',
           },
@@ -98,14 +135,16 @@ export async function setupDoubao({ directory, targets }) {
       grants: ['read', 'send'],
       started: false,
       nativeSessionIdentity: false,
+      mcpConfigPath: join(dest, 'mcp.json'),
       startArgv: [
         'env',
         '-u',
         'AGENTHUB_TOKEN',
-        'agenthub',
+        process.execPath,
+        cliPath,
         'serve',
         '--port',
-        '3214',
+        String(port),
         '--config',
         join(dest, 'hub.json'),
         '--token-file',
@@ -130,18 +169,22 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       options: {
         directory: { type: 'string' },
         targets: { type: 'string' },
+        port: { type: 'string' },
+        cli: { type: 'string' },
         help: { type: 'boolean' },
       },
     });
     if (values.help)
       console.log(
-        'node scripts/setup-doubao.mjs --targets FILE [--directory NEW_PRIVATE_DIRECTORY]',
+        'node scripts/setup-doubao.mjs --targets FILE [--directory NEW_PRIVATE_DIRECTORY] [--port 3214] [--cli ABSOLUTE_CLI_JS]',
       );
     else {
       if (!values.targets) throw Error('--targets FILE is required');
       const result = await setupDoubao({
         directory: values.directory ?? join(homedir(), '.agenthub', 'doubao'),
         targets: JSON.parse(await readFile(resolve(values.targets), 'utf8')),
+        ...(values.port !== undefined ? { port: Number(values.port) } : {}),
+        ...(values.cli !== undefined ? { cliPath: values.cli } : {}),
       });
       console.log(JSON.stringify(result));
     }

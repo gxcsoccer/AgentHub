@@ -15,7 +15,7 @@ The `@gxcsoccer/agenthub@0.2.0` release includes PRs #1 and #2, with matching [G
 
 [Acceptance](ACCEPTANCE.md) gives reproducible commands. [Verification](VERIFICATION.md) separates real models, protocol fixtures, synthetic load and historical evidence. [Extensions](EXTENSIONS.md) defines API limits.
 
-Windows completion is excluded from this follow-up: native model acceptance, callbacks/replies and private durable storage remain pending. Doubao work is now active: the development branch implements a local CLI plugin and private scoped setup; host loading, native identity, unsolicited wake-up, Agent OpenAPI and MCP Events remain pending. [Setup and boundaries](DOUBAO.md).
+Windows completion is excluded from this follow-up: native model acceptance, callbacks/replies and private durable storage remain pending. Doubao work is now active: the development branch provides plugin-free MCP setup, an optional local CLI plugin and isolated stdio MCP acceptance against real Claude/Codex; Doubao host loading, native identity, unsolicited wake-up, Agent OpenAPI and MCP Events remain pending. [Setup and boundaries](DOUBAO.md).
 
 Durable consumer groups, full-history indexing and hot policy updates are optional future work. Longer production observation and additional native versions require fresh evidence. Native dynamic reply tools in existing Codex sessions retain creation-time registration constraints. This branch integrates App Server MCP reload into the connector with real bidirectional acceptance. AgentHub does not simulate tool installation with implicit resume.
 
