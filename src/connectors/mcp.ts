@@ -64,7 +64,7 @@ export function createConnectorMcpServer(client: ConnectorClient) {
     'reply_agent',
     {
       description:
-        'Reply once to a request addressed to this session. Use its request ID. Results do not request another reply.',
+        'Reply once to a request addressed to this session. Use its request ID. Results do not request another reply. If this fails because the Hub is unavailable, retry later with the same request ID and identical text.',
       inputSchema: z.strictObject({
         request: z.string().uuid(),
         message: z.string().min(1).max(100000),

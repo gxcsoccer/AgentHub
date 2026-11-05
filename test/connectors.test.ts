@@ -12,7 +12,11 @@ import { HubError } from '../src/validation.js';
 import type { ProcessIdentity, ConnectorProfile } from '../src/connectors/types.js';
 
 const token = 'connector-enrollment-'.repeat(3);
-async function fixture(t: test.TestContext, store?: ReceiptStore) {
+async function fixture(
+  t: test.TestContext,
+  store?: ReceiptStore,
+  extraProfiles: ConnectorProfile[] = [],
+) {
   const a = { harness: 'claude', instance: 'local', sessionId: randomUUID() };
   const b = { ...a, sessionId: randomUUID() };
   const rows = new Map<string, SessionInfo>([
@@ -88,6 +92,7 @@ async function fixture(t: test.TestContext, store?: ReceiptStore) {
       instance: 'local',
       enrollmentToken: token,
     },
+    ...extraProfiles,
   ];
   const processes = new Map<number, ProcessIdentity>();
   for (const [pid, ppid] of [
@@ -439,10 +444,249 @@ test('disabled reply routes and corrupt or saturated registries are explicit fai
   assert.throws(() => new ConnectorService(f.hub, [f.profiles[0]!, f.profiles[0]!]), /unique/);
   const state = f.hub.featureState('connectors'),
     registry = state.get('registry')!;
-  const bindings = registry.bindings as Record<string, unknown>;
-  for (let i = 0; i < 4097; i++) bindings['entry' + i] = c.binding;
+  const credentials = registry.credentials as Record<string, unknown>;
+  const credential = Object.values(credentials)[0];
+  for (let i = 0; i < 4097; i++) credentials['entry' + i] = credential;
   state.set('registry', registry);
   await assert.rejects(f.service.enroll(token, f.ea), /capacity/);
   state.set('registry', { version: 99 });
   assert.throws(() => new ConnectorService(f.hub, f.profiles), /refusing recovery/);
+});
+
+test('capacity reclaims stale bindings and ended hooks first, then the oldest, and only the excess', async (t) => {
+  const f = await fixture(t);
+  const c = await f.service.enroll(token, f.ea);
+  const state = f.hub.featureState('connectors'),
+    registry = state.get('registry')!;
+  const bindings = registry.bindings as Record<string, Record<string, unknown>>;
+  const live = Object.keys(bindings)[0]!;
+  const hook = (ended: boolean, seenAt: string) => ({
+    profileId: c.binding.profileId,
+    revision: Object.values(registry.credentials as Record<string, { revision: string }>)[0]!
+      .revision,
+    host: Object.values(registry.credentials as Record<string, { host: unknown }>)[0]!.host,
+    sessionId: randomUUID(),
+    ended,
+    seenAt,
+  });
+  const hooks = registry.hooks as Record<string, unknown>;
+  for (let i = 0; i < 4096; i++) {
+    bindings['stale' + i] = { ...c.binding, lastSeenAt: '2026-01-01T00:00:00.000Z' };
+    hooks['live' + i] = hook(false, '2026-02-01T00:00:00.000Z');
+  }
+  hooks.ended = hook(true, '2026-03-01T00:00:00.000Z');
+  state.set('registry', registry);
+  await f.service.enroll(token, f.ea);
+  const after = state.get('registry')!;
+  const rows = after.bindings as Record<string, unknown>;
+  assert.equal(Object.keys(rows).length, 4096);
+  assert(rows[live]);
+  assert(!rows.stale0);
+  assert.equal(Object.keys(after.hooks as object).length, 4096);
+  assert(!(after.hooks as Record<string, unknown>).ended);
+});
+
+test('disconnect takes effect without a restart, survives one, and owner connect reverses it', async (t) => {
+  const f = await fixture(t);
+  const c = await f.service.enroll(token, f.ea);
+  const peer = await f.service.enroll(token, f.eb);
+  const ask = (to: unknown, from = c.token, evidence: unknown = f.ea) =>
+    f.service.call(from, evidence, {
+      operation: 'ask',
+      messageId: randomUUID(),
+      to,
+      message: 'hello',
+      expiresAt: new Date(Date.now() + 60000).toISOString(),
+    });
+  const result = await f.service.disconnect({ address: f.b });
+  assert.equal(result.removed.bindings, 1);
+  assert.equal(result.removed.credentials, 1);
+  await assert.rejects(f.service.call(peer.token, f.eb, { operation: 'identity' }), /Unknown/);
+  await assert.rejects(f.service.enroll(token, f.eb), { code: 'connector_disconnected' });
+  await assert.rejects(ask(f.b), { code: 'peer_not_connected' });
+  const listed = (await f.service.call(c.token, f.ea, { operation: 'list_peers' })) as {
+    peers: { address: { sessionId: string } }[];
+  };
+  assert(!listed.peers.some((p) => p.address.sessionId === f.b.sessionId));
+  const restarted = new ConnectorService(f.hub, f.profiles, { inspect: f.inspect });
+  await assert.rejects(restarted.enroll(token, f.eb), { code: 'connector_disconnected' });
+  assert.deepEqual(
+    (await restarted.connections()).disconnected.map((d) => d.address),
+    [f.b],
+  );
+  await assert.rejects(restarted.connect({ address: f.b }, 3211));
+  await assert.rejects(restarted.enroll(token, f.eb), { code: 'connector_disconnected' });
+  await assert.rejects(f.service.disconnect({ profileId: 'missing' }), /Unknown/);
+  const off = await f.service.disconnect({ profileId: f.profiles[0]!.id });
+  assert.equal(off.removed.bindings, 1);
+  await assert.rejects(f.service.enroll(token, f.ea), { code: 'connector_disabled' });
+  assert.equal((await f.service.connections()).profiles[0]!.enabled, false);
+});
+
+test('reconnect restores an MCP session and a disabled profile, and other sessions stay usable', async (t) => {
+  const f = await fixture(t);
+  await f.service.enroll(token, f.ea);
+  await f.service.enroll(token, f.eb);
+  assert.equal((await f.service.reconnect({ address: f.b })).changed, false);
+  await f.service.disconnect({ address: f.b });
+  await assert.rejects(f.service.enroll(token, f.eb), { code: 'connector_disconnected' });
+  assert.equal((await f.service.reconnect({ address: f.b })).changed, true);
+  assert.equal((await f.service.enroll(token, f.eb)).binding.address.sessionId, f.b.sessionId);
+  await f.service.disconnect({ profileId: f.profiles[0]!.id });
+  await assert.rejects(f.service.enroll(token, f.ea), { code: 'connector_disabled' });
+  await f.service.reconnect({ profileId: f.profiles[0]!.id });
+  await f.service.enroll(token, f.ea);
+  assert.equal((await f.service.connections()).profiles[0]!.enabled, true);
+  await assert.rejects(f.service.reconnect({ profileId: 'missing' }), /Unknown/);
+});
+
+test('disconnect records are never evicted, and capacity refuses a new one', async (t) => {
+  const f = await fixture(t);
+  await f.service.disconnect({ address: f.b });
+  const state = f.hub.featureState('connectors'),
+    registry = state.get('registry')!;
+  const rows = registry.disconnected as Record<string, { address: unknown; at: string }>;
+  for (let i = 1; i < 4096; i++)
+    rows['entry' + i] = { address: f.a, at: '2026-12-01T00:00:00.000Z' };
+  state.set('registry', registry);
+  await assert.rejects(
+    f.service.disconnect({ address: { ...f.a, sessionId: randomUUID() } }),
+    /capacity/,
+  );
+  await assert.rejects(f.service.enroll(token, f.eb), { code: 'connector_disconnected' });
+});
+
+test('a disconnect during ask stops delivery at the boundary, including a late forward', async (t) => {
+  const f = await fixture(t);
+  const c = await f.service.enroll(token, f.ea);
+  await f.service.enroll(token, f.eb);
+  const getSession = f.adapter.getSession.bind(f.adapter);
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  let reads = 0;
+  f.adapter.getSession = async (address) => {
+    if (address.sessionId === f.b.sessionId && ++reads === 2) await gate;
+    return getSession(address);
+  };
+  const asking = f.service.call(c.token, f.ea, {
+    operation: 'ask',
+    messageId: randomUUID(),
+    to: f.b,
+    message: 'hello',
+    expiresAt: new Date(Date.now() + 60000).toISOString(),
+  });
+  while (reads < 2) await new Promise((resolve) => setTimeout(resolve, 1));
+  await f.service.disconnect({ address: f.b });
+  assert.equal(f.adapter.calls.length, 0);
+  release();
+  await assert.rejects(asking, { code: 'peer_not_connected' });
+  assert.equal(f.adapter.calls.length, 0);
+});
+
+test('a profile disconnect during ask stops delivery, and owner sends keep their origin', async (t) => {
+  const f = await fixture(t);
+  const c = await f.service.enroll(token, f.ea);
+  const getSession = f.adapter.getSession.bind(f.adapter);
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  let reads = 0;
+  f.adapter.getSession = async (address) => {
+    if (address.sessionId === f.b.sessionId && ++reads === 2) await gate;
+    return getSession(address);
+  };
+  const asking = f.service.call(c.token, f.ea, {
+    operation: 'ask',
+    messageId: randomUUID(),
+    to: f.b,
+    message: 'hello',
+    expiresAt: new Date(Date.now() + 60000).toISOString(),
+  });
+  while (reads < 2) await new Promise((resolve) => setTimeout(resolve, 1));
+  await f.service.disconnect({ profileId: f.profiles[0]!.id });
+  release();
+  await assert.rejects(asking, { code: 'peer_not_connected' });
+  assert.equal(f.adapter.calls.length, 0);
+  await f.service.reconnect({ profileId: f.profiles[0]!.id });
+  const owner = await f.hub.send({
+    messageId: randomUUID(),
+    to: f.b,
+    origin: { name: 'owner', session: f.a },
+    text: 'hello',
+    delivery: 'peer_message',
+    messageKind: 'request',
+  });
+  assert.equal(owner.status, 'accepted');
+});
+
+test('a source disconnected during ask is refused while its target profile stays enabled', async (t) => {
+  const f = await fixture(t, undefined, [
+    {
+      id: 'second',
+      callerId: 'agents',
+      harness: 'claude',
+      instance: 'local',
+      enrollmentToken: 'second-token-'.repeat(4),
+    },
+  ]);
+  const service = f.service;
+  const c = await service.enroll(token, f.ea);
+  // A binding from another profile must not stand in for the revoked one.
+  await service.enroll('second-token-'.repeat(4), f.ea);
+  const getSession = f.adapter.getSession.bind(f.adapter);
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  let reads = 0;
+  f.adapter.getSession = async (address) => {
+    if (address.sessionId === f.b.sessionId && ++reads === 2) await gate;
+    return getSession(address);
+  };
+  const asking = service.call(c.token, f.ea, {
+    operation: 'ask',
+    messageId: randomUUID(),
+    to: f.b,
+    message: 'hello',
+    expiresAt: new Date(Date.now() + 60000).toISOString(),
+  });
+  while (reads < 2) await new Promise((resolve) => setTimeout(resolve, 1));
+  await service.disconnect({ profileId: f.profiles[0]!.id });
+  release();
+  await assert.rejects(asking, { code: 'connector_disconnected' });
+  assert.equal(f.adapter.calls.length, 0);
+});
+
+test('connectedPeersOnly hides unbound, stale and disconnected sessions from peers and ask', async (t) => {
+  const f = await fixture(t);
+  const service = new ConnectorService(f.hub, f.profiles, {
+    inspect: f.inspect,
+    connectedPeersOnly: true,
+  });
+  const c = await service.enroll(token, f.ea);
+  const ask = (to: unknown) =>
+    service.call(c.token, f.ea, {
+      operation: 'ask',
+      messageId: randomUUID(),
+      to,
+      message: 'hello',
+      expiresAt: new Date(Date.now() + 60000).toISOString(),
+    });
+  const ids = async () =>
+    (
+      (await service.call(c.token, f.ea, { operation: 'list_peers' })) as {
+        peers: { address: { sessionId: string } }[];
+      }
+    ).peers.map((p) => p.address.sessionId);
+  assert(!(await ids()).includes(f.b.sessionId));
+  await assert.rejects(ask(f.b), { code: 'peer_not_connected' });
+  await service.enroll(token, f.eb);
+  assert((await ids()).includes(f.b.sessionId));
+  const state = f.hub.featureState('connectors'),
+    registry = state.get('registry')!;
+  const bindings = registry.bindings as Record<string, unknown>;
+  const key = Object.keys(bindings).find(
+    (k) => (bindings[k] as { address: { sessionId: string } }).address.sessionId === f.b.sessionId,
+  )!;
+  bindings['old-revision'] = bindings[key];
+  delete bindings[key];
+  state.set('registry', registry);
+  assert(!(await ids()).includes(f.b.sessionId));
 });

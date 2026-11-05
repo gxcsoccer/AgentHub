@@ -84,6 +84,7 @@ async function main() {
   agenthub agent --connector-profile FILE activate --activation-id UUID
   agenthub connect --harness codex|claude --session-id ID [--connector-profile FILE] [--wait-ms 30000]
                    [--retry-activation] (Claude CLI: explicitly replace an expired handshake)
+  agenthub disconnect|reconnect --harness codex|claude --session-id ID
   agenthub setup targets --harness claude|codex [--cursor CURSOR]
   agenthub setup init --directory NEW_DIR --targets FILE [--port 3214]
   agenthub setup init --directory NEW_DIR --harness claude|codex --session-id UUID
@@ -220,6 +221,8 @@ No session is launched, resumed or interrupted implicitly.`);
       'connector-hook',
       'connections',
       'connect',
+      'disconnect',
+      'reconnect',
       'agent',
     ].includes(command)
   )
@@ -360,6 +363,10 @@ No session is launched, resumed or interrupted implicitly.`);
     instance: values.instance,
   });
   const target = () => address({ ...scope(), sessionId: values['session-id'] });
+  if (command === 'disconnect' || command === 'reconnect') {
+    console.log(JSON.stringify(await client[command]({ address: target() })));
+    return;
+  }
   if (command === 'connect') {
     const result = await client.connectSession(target(), {
       ...(values['connector-profile']

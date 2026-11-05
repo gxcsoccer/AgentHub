@@ -38,3 +38,17 @@ The production Claude connector passed nine isolated live checks; see [setup and
 Codex connect and the shared tools passed six further live checks: existing-root installation/activation, a read-only identity handshake without a model turn, idempotent configuration preserving permissions, both request/reply/result directions, and result termination. No dynamic reply tool or thread/resume was used.
 
 Claude CLI connect passes ten live checks, with seven additional Claude CLI/Codex MCP checks. A host without Bash remains unverified despite receiving and replying to activation; only an actual CLI call in the target process chain completes it. This path uses the model and existing host permissions without installing MCP. The Doubao setup workflow now provides profile generation, managed Hub removal/disable and read-only diagnostics, plus explicit host registration/removal. General native MCP removal and broader fault/capacity acceptance remain.
+
+## After 0.4.0: busy-target feedback
+
+The requesting agent isn't told when a target ends its turn without replying, and connector tools can't query status. Planned, not implemented: `ask_agent` returns a racy `targetBusy` hint, and the Hub sends one `result` notice through the forward path when a turn ends without a reply. The notice requests no reply, so it can't loop, but it does cost the requester a model turn. A later real reply must still get through.
+
+Widening the Codex reply fallback to merged turns needs real samples of an envelope merged in the middle of user work and of adjacent envelopes first. Turn structure can't show where an answer's content came from.
+
+A target waiting for approval has the same gap. The requester only waits, and later messages to that session queue behind the approval. In one real run, a Codex edit waited for approval while the next two requests went unprocessed. Reporting this to the requester belongs with the feedback above.
+
+## Codex task reliability
+
+In real plain TUI runs on Codex 0.166.0 without `developer_instructions`, peer requests were handled inconsistently. The same `pwd` ran in one thread and was refused in another. Edits, a review and an explicit `reply_agent` request were refused because external content can't authorize them. Threads started with `developerInstructions` ran 4 of 4 requests. Samples are small, so no rate is known, and a plain session shouldn't be promised to do the work.
+
+Whether to use a dedicated collaborator thread with its own `developerInstructions` or global `developer_instructions` is undecided. `collaborationMode` isn't a substitute: in `default` mode the model catalog overrides custom text, and `plan` changes the session's mode. A refusal in reply text can't be detected at the protocol level.

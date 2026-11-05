@@ -56,7 +56,7 @@ export function createHubServer(options: {
     }
     if (req.method === 'OPTIONS' && origin) {
       res.writeHead(204, {
-        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
         'Access-Control-Allow-Headers': 'Authorization, Content-Type, Last-Event-ID',
       });
       res.end();
@@ -96,6 +96,24 @@ export function createHubServer(options: {
         res,
         200,
         await options.connectors.connect(await readBody(req), req.socket.localPort!),
+      );
+      return;
+    }
+    if (
+      req.method === 'POST' &&
+      (url.pathname === '/v1/disconnect' || url.pathname === '/v1/reconnect')
+    ) {
+      if (callerId !== OWNER)
+        throw new HubError('forbidden', 'Connector disconnection requires the owner', 403);
+      if (!options.connectors)
+        throw new HubError('connector_disabled', 'Connectors are not configured', 503);
+      const input = await readBody(req);
+      sendJson(
+        res,
+        200,
+        await (url.pathname === '/v1/disconnect'
+          ? options.connectors.disconnect(input)
+          : options.connectors.reconnect(input)),
       );
       return;
     }
@@ -193,6 +211,24 @@ export function createHubServer(options: {
         202,
         await hub.send((await readBody(req)) as unknown as MessageInput, callerId),
       );
+      return;
+    }
+    if (req.method === 'GET' && url.pathname === '/v1/messages') {
+      sendJson(
+        res,
+        200,
+        await hub.listMessages(
+          {
+            ...(q.cursor !== undefined ? { cursor: q.cursor } : {}),
+            ...(q.limit !== undefined ? { limit: Number(q.limit) } : {}),
+          },
+          callerId,
+        ),
+      );
+      return;
+    }
+    if (req.method === 'DELETE' && url.pathname === '/v1/messages') {
+      sendJson(res, 200, await hub.clearMessages(callerId));
       return;
     }
     if (req.method === 'GET' && url.pathname.startsWith('/v1/messages/')) {

@@ -52,6 +52,10 @@ export class AgentHub {
   private readonly initialization: Promise<void>;
   private storageFailure?: Error;
   private readonly featureMetadata = new Map<string, Json>();
+  // Newest event sequence among removed messages. listMessages reports a gap
+  // when a caller's cursor is older, because those changes can't be replayed.
+  private removedThrough = 0;
+  private deliveryGuards: ((envelope: Envelope) => void)[] = [];
   constructor(
     adapters: Adapter[],
     private readonly options: {
@@ -76,9 +80,13 @@ export class AgentHub {
       this.adapters.set(key, adapter);
     }
     try {
+      const removed = options.store?.getMeta('messages:removed')?.sequence;
+      if (typeof removed === 'number') this.removedThrough = removed;
+      const legacy: StoredReceipt[] = [];
       for (const saved of options.store?.load() ?? []) {
         if (saved.expires <= Date.now()) {
           options.store!.remove([saved.envelope.messageId]);
+          this.noteRemoved(saved);
           continue;
         }
         if (saved.phase !== 'settled') {
@@ -91,6 +99,7 @@ export class AgentHub {
             saved.receipt.updatedAt = new Date().toISOString();
           }
           saved.phase = 'settled';
+          saved.sequence = this.events.nextSequence;
           this.events.publish(
             'message.status',
             structuredClone(saved.receipt) as unknown as Json,
@@ -100,11 +109,17 @@ export class AgentHub {
             [saved],
           );
         }
+        if (saved.sequence === undefined) {
+          // Records from before 0.4.0. The message ID orders those sharing a sequence.
+          saved.sequence = Math.max(this.events.position.sequence, 1);
+          legacy.push(saved);
+        }
         this.entries.set(saved.envelope.messageId, {
           ...saved,
           promise: Promise.resolve(saved.receipt),
         });
       }
+      if (legacy.length) options.store!.save(legacy);
     } catch (error) {
       options.store?.close();
       throw error;
@@ -167,6 +182,10 @@ export class AgentHub {
   async ready(): Promise<void> {
     await this.initialization;
     this.healthy();
+  }
+  /** Trusted in-process hook. A throw refuses delivery after every earlier check. */
+  guardDelivery(guard: (envelope: Envelope) => void) {
+    this.deliveryGuards.push(guard);
   }
   /** Trusted in-process extension state, never exposed through the public API. */
   featureState(namespace: string): AdapterState {
@@ -357,14 +376,15 @@ export class AgentHub {
     this.access.require(callerId, 'read', valid, valid.sessionId);
     return searchHistory(this.adapter(valid), valid, query, callerId);
   }
-  async send(value: MessageInput, callerId = OWNER): Promise<Receipt> {
+  /** beforeDelivery runs with the delivery guards, so a throw refuses this message. */
+  async send(value: MessageInput, callerId = OWNER, beforeDelivery?: () => void): Promise<Receipt> {
     if (value.delivery === 'user_input')
       throw new HubError(
         'explicit_prompt_required',
         'Use the explicit prompt operation for user_input',
         422,
       );
-    return this.sendInput(value, undefined, callerId);
+    return this.sendInput(value, undefined, callerId, beforeDelivery);
   }
   async prompt(value: MessageInput, callerId = OWNER) {
     if (value.delivery !== 'user_input' || value.replyTo)
@@ -412,7 +432,12 @@ export class AgentHub {
       );
     return adapter.attachReplyRoute(valid, options);
   }
-  private async sendInput(value: MessageInput, parent?: Entry, callerId = OWNER): Promise<Receipt> {
+  private async sendInput(
+    value: MessageInput,
+    parent?: Entry,
+    callerId = OWNER,
+    beforeDelivery?: () => void,
+  ): Promise<Receipt> {
     await this.ready();
     const input = messageInput(value);
     this.access.require(
@@ -476,7 +501,7 @@ export class AgentHub {
       this.entries.delete(input.messageId);
       throw error;
     }
-    entry.promise = this.submit(adapter, entry).finally(() => {
+    entry.promise = this.submit(adapter, entry, beforeDelivery).finally(() => {
       if (!this.closed) {
         entry.phase = 'settled';
         entry.expires = Date.now() + (this.options.receiptTtlMs ?? 86400000);
@@ -485,7 +510,11 @@ export class AgentHub {
     });
     return entry.promise;
   }
-  private async submit(adapter: Adapter, entry: Entry): Promise<Receipt> {
+  private async submit(
+    adapter: Adapter,
+    entry: Entry,
+    beforeDelivery?: () => void,
+  ): Promise<Receipt> {
     try {
       const session = await adapter.getSession(entry.envelope.to);
       if (this.closed) throw new HubError('closed', 'Hub is closed', 503);
@@ -497,6 +526,9 @@ export class AgentHub {
         );
       if (Date.parse(entry.envelope.expiresAt) <= Date.now())
         throw new HubError('expired', 'Message expired', 409);
+      // No await may follow this before adapter.send.
+      for (const guard of this.deliveryGuards) guard(entry.envelope);
+      beforeDelivery?.();
     } catch (error) {
       this.apply(adapter, {
         messageId: entry.envelope.messageId,
@@ -552,6 +584,7 @@ export class AgentHub {
       (typeof update.reply.text !== 'string' || update.reply.text.length > 100000)
     )
       return;
+    if (update.status === 'replied') delete entry.receipt.noReply;
     Object.assign(entry.receipt, structuredClone(update), { updatedAt: new Date().toISOString() });
     if (
       update.status === 'replied' &&
@@ -586,7 +619,14 @@ export class AgentHub {
           to,
           delivery,
           text: body,
-          origin: { name: `${original.to.harness} via AgentHub`, session: original.to },
+          origin: {
+            name: `${original.to.harness} via AgentHub${
+              entry.receipt.reply?.metadata?.source === 'turn_final_message'
+                ? ' (taken from its final answer; it did not call reply_agent)'
+                : ''
+            }`,
+            session: original.to,
+          },
           inReplyTo: original.messageId,
           correlationId: original.correlationId ?? original.messageId,
           expiresAt: original.expiresAt,
@@ -607,6 +647,8 @@ export class AgentHub {
     }
   }
   private publish(entry: Entry, related: Entry[] = []): void {
+    entry.sequence = this.events.nextSequence;
+    for (const other of related) other.sequence = entry.sequence;
     this.storeAction(() =>
       this.events.publish(
         'message.status',
@@ -662,7 +704,105 @@ export class AgentHub {
       .filter(([, entry]) => entry.phase === 'settled' && entry.expires < Date.now())
       .map(([id]) => id);
     if (this.options.store && ids.length) this.storeAction(() => this.options.store!.remove(ids));
+    for (const id of ids) {
+      this.noteRemoved(this.entries.get(id)!);
+      this.entries.delete(id);
+    }
+  }
+  private noteRemoved(entry: { sequence?: number }) {
+    const sequence = entry.sequence ?? 0;
+    if (sequence <= this.removedThrough) return;
+    this.removedThrough = sequence;
+    this.options.store?.setMeta('messages:removed', { sequence });
+  }
+  private requireOwner(callerId: string, action: string) {
+    if (callerId !== OWNER) throw new HubError('forbidden', `${action} require the owner`, 403);
+  }
+  /**
+   * Owner view of retained messages, oldest change first. A message reappears
+   * whenever it changes, so consumers upsert by messageId. `gap` means changes
+   * after the supplied cursor were removed and can no longer be returned.
+   */
+  async listMessages(query: { cursor?: string; limit?: number } = {}, callerId = OWNER) {
+    await this.ready();
+    this.requireOwner(callerId, 'Message listings');
+    const limit = query.limit ?? 100;
+    if (!Number.isInteger(limit) || limit < 1 || limit > 500)
+      throw new HubError('invalid_input', 'limit must be 1..500');
+    this.prune();
+    const { epoch, sequence } = this.events.position;
+    let after = 0,
+      afterId = '',
+      gap = false;
+    if (query.cursor !== undefined) {
+      const match = /^([^:]+):(\d+)(?::(\d+):(.+))?$/.exec(query.cursor);
+      if (!match || !Number.isSafeInteger(Number(match[2])))
+        throw new HubError('invalid_cursor', 'Malformed message cursor');
+      if (match[1] !== epoch || Number(match[2]) > sequence) gap = true;
+      else {
+        after = Number(match[2]);
+        afterId = match[4] ?? '\u{10ffff}';
+        // A partial page sits behind newer removals it already reported, so it
+        // carries the removal point it was issued at.
+        gap = this.removedThrough > Math.max(after, Number(match[3] ?? 0));
+      }
+    }
+    const position = (entry: Entry) => [entry.sequence ?? 0, entry.envelope.messageId] as const;
+    const rows = [...this.entries.values()]
+      .filter((entry) => {
+        const [rowSequence, id] = position(entry);
+        if (query.cursor === undefined) return true;
+        return rowSequence > after || (rowSequence === after && id > afterId);
+      })
+      .sort((a, b) => {
+        const [aSequence, aId] = position(a),
+          [bSequence, bId] = position(b);
+        return aSequence - bSequence || (aId < bId ? -1 : aId > bId ? 1 : 0);
+      });
+    const page = rows.slice(0, limit);
+    const hasMore = rows.length > limit;
+    const last = page.at(-1);
+    return {
+      data: page.map(({ envelope, receipt }) => structuredClone({ envelope, receipt })),
+      // Messages can share a sequence, so a partial page also records its position.
+      nextCursor: hasMore
+        ? `${epoch}:${last!.sequence ?? 0}:${this.removedThrough}:${last!.envelope.messageId}`
+        : `${epoch}:${sequence}`,
+      hasMore,
+      gap,
+    };
+  }
+  /**
+   * Removes finished messages and every retained event. Requests still waiting
+   * for a reply or a forward are kept, so a late reply isn't lost.
+   */
+  async clearMessages(callerId = OWNER) {
+    await this.ready();
+    this.requireOwner(callerId, 'Message clearing');
+    this.healthy();
+    const store = this.options.store;
+    if (store && !store.clearMessages)
+      throw new HubError('unsupported', 'This store cannot clear messages', 501);
+    const now = Date.now();
+    const finished = (entry: Entry) =>
+      entry.phase === 'settled' &&
+      (Date.parse(entry.envelope.expiresAt) <= now ||
+        (['none', 'done'].includes(entry.forwardState) &&
+          (entry.envelope.messageKind !== 'request' ||
+            ['replied', 'failed', 'rejected'].includes(entry.receipt.status))));
+    const removed = [...this.entries.values()].filter(finished);
+    const ids = removed.map((entry) => entry.envelope.messageId);
+    const removedThrough = this.events.position.sequence;
+    this.storeAction(() =>
+      this.events.truncate((state) =>
+        store?.clearMessages?.(ids, state, { sequence: removedThrough }),
+      ),
+    );
     for (const id of ids) this.entries.delete(id);
+    this.removedThrough = removedThrough;
+    const result = { removed: ids.length, retained: this.entries.size };
+    this.storeAction(() => this.events.publish('messages.cleared', result, null, null, OWNER));
+    return result;
   }
   async close(): Promise<void> {
     if (this.closed) return;

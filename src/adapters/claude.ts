@@ -23,7 +23,7 @@ import type {
 const exec = promisify(execFile);
 export const CLAUDE_NATIVE_VERSION = '2.1.318';
 export const CLAUDE_NATIVE_VERSIONS = ['2.1.317', CLAUDE_NATIVE_VERSION] as const;
-const supportedVersion = (version: string) => CLAUDE_NATIVE_VERSIONS.some((v) => v === version);
+const validatedVersion = (version: string) => CLAUDE_NATIVE_VERSIONS.some((v) => v === version);
 export interface ClaudeSession {
   sessionId: string;
   pid: number;
@@ -40,6 +40,11 @@ export interface ClaudeOptions {
   nativeMessaging?: boolean;
   discover?: () => Promise<ClaudeSession[]>;
   version?: () => Promise<string>;
+  /**
+   * Embedder policy for native messaging. Defaults to the validated versions.
+   * The installed version is still reported as is.
+   */
+  supportsNativeVersion?: (version: string) => boolean;
   timeoutMs?: number;
 }
 interface Callback {
@@ -111,6 +116,9 @@ export class ClaudeAdapter extends EventEmitter implements Adapter {
       };
     });
   }
+  private supportedVersion(version: string): boolean {
+    return (this.options.supportsNativeVersion ?? validatedVersion)(version);
+  }
   private version(): Promise<string> {
     return (this.versionPromise ??= this.options.version
       ? this.options.version()
@@ -124,6 +132,7 @@ export class ClaudeAdapter extends EventEmitter implements Adapter {
   }
   private async info(session: ClaudeSession): Promise<SessionInfo> {
     const version = await this.version();
+    const nativeVersionSupported = this.supportedVersion(version);
     let socketAvailable = false;
     try {
       const s = await lstat(this.inbox(session));
@@ -136,7 +145,7 @@ export class ClaudeAdapter extends EventEmitter implements Adapter {
       ...(session.cwd ? { cwd: session.cwd } : {}),
       capabilities: {
         send:
-          this.options.nativeMessaging && supportedVersion(version) && socketAvailable
+          this.options.nativeMessaging && nativeVersionSupported && socketAvailable
             ? ['peer_message']
             : [],
         history: true,
@@ -152,6 +161,7 @@ export class ClaudeAdapter extends EventEmitter implements Adapter {
         versionSource: 'installed_cli_cached',
         validatedCliVersion: CLAUDE_NATIVE_VERSION,
         validatedCliVersions: [...CLAUDE_NATIVE_VERSIONS],
+        nativeVersionSupported,
         processVersionVerified: false,
         nativeMessagingEnabled: this.options.nativeMessaging ?? false,
         socketAvailable,
@@ -342,10 +352,10 @@ export class ClaudeAdapter extends EventEmitter implements Adapter {
         422,
       );
     const version = await this.version();
-    if (!supportedVersion(version))
+    if (!this.supportedVersion(version))
       throw new HubError(
         'unsupported_version',
-        `Claude native inbox is validated only with ${CLAUDE_NATIVE_VERSIONS.join(', ')}`,
+        `Claude native inbox is validated only with ${CLAUDE_NATIVE_VERSIONS.join(', ')}; installed version is ${version}`,
         422,
       );
     const session = await this.session(message.to);

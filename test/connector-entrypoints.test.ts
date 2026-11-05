@@ -238,6 +238,88 @@ test('connector profiles require private files, restrict configuration and resol
   await assert.rejects(loadConnectorClientProfile(filename), /configuration/);
 });
 
+test('a credential removed by disconnect re-enrolls once on the next call', async () => {
+  let enrollments = 0,
+    calls = 0,
+    removed = false;
+  const fake: typeof fetch = async (url) => {
+    if (String(url).endsWith('/enroll')) {
+      enrollments++;
+      removed = false;
+      return Response.json({ token: 'business-'.repeat(8), binding: {} });
+    }
+    calls++;
+    return removed
+      ? Response.json(
+          { error: { code: 'invalid_credential', message: 'Unknown connector credential' } },
+          { status: 401 },
+        )
+      : Response.json({ ok: true });
+  };
+  const client = new ConnectorClient({
+    baseUrl: 'http://localhost:3211',
+    enrollmentToken: token,
+    evidence: { pid: 10001, startupSessionId: randomUUID() },
+    fetch: fake,
+  });
+  await client.identity();
+  removed = true;
+  await client.listPeers();
+  assert.equal(enrollments, 2);
+  assert.equal(calls, 3);
+});
+
+test('reply retries a Hub outage with the same text, and ask and refusals are not retried', async () => {
+  const bodies: { operation: string; request?: string; message?: string }[] = [];
+  let outage = 2;
+  let refusal: Response | undefined;
+  const fake: typeof fetch = async (url, init) => {
+    if (String(url).endsWith('/enroll'))
+      return Response.json({ token: 'business-'.repeat(8), binding: {} });
+    bodies.push(JSON.parse(String(init?.body)).operation);
+    if (outage > 0) {
+      outage--;
+      throw new TypeError('fetch failed');
+    }
+    if (refusal) return refusal;
+    return Response.json({ request: 'r', accepted: true, duplicate: bodies.length > 3 });
+  };
+  const options = {
+    baseUrl: 'http://localhost:3211',
+    enrollmentToken: token,
+    evidence: { pid: 10001, startupSessionId: randomUUID() },
+    fetch: fake,
+  };
+  const client = new ConnectorClient({ ...options, replyRetryMs: 5000 });
+  const request = randomUUID();
+  await client.reply({ request, message: 'answer' });
+  assert.equal(bodies.length, 3);
+  assert(bodies.every((b) => b.request === request && b.message === 'answer'));
+  bodies.length = 0;
+  refusal = Response.json(
+    { error: { code: 'reply_conflict', message: 'different' } },
+    { status: 409 },
+  );
+  await assert.rejects(client.reply({ request, message: 'other' }), /different/);
+  assert.equal(bodies.length, 1);
+  bodies.length = 0;
+  refusal = undefined;
+  outage = 100;
+  const short = new ConnectorClient({ ...options, replyRetryMs: 300 });
+  await assert.rejects(
+    short.reply({ request, message: 'answer' }),
+    (e: unknown) =>
+      e instanceof Error &&
+      (e as { code?: string }).code === 'connector_request_failed' &&
+      e.message.includes(request) &&
+      e.message.includes('identical text'),
+  );
+  assert(bodies.length >= 2);
+  bodies.length = 0;
+  await assert.rejects(short.ask({ to: '@claude/reviewer', message: 'work' }));
+  assert.equal(bodies.length, 1);
+});
+
 test('connector client coalesces enrollment and never automatically retries a failed write', async () => {
   let enrollments = 0,
     calls = 0,

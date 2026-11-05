@@ -26,6 +26,7 @@ export async function connectSession(
     waitMs: number,
     retry: boolean,
   ) => Promise<ConnectorConnectionResult>,
+  prepare?: (profile: ConnectorProfile, address: SessionAddress) => void,
 ): Promise<ConnectorConnectionResult> {
   const parsed = z
     .strictObject({
@@ -82,6 +83,7 @@ export async function connectSession(
   const profile = matching[0]!;
   hub.access.require(profile.callerId, 'read', input.address, input.address.sessionId);
   hub.access.require(profile.callerId, 'send', input.address, input.address.sessionId);
+  prepare?.(profile, input.address);
   if (input.address.harness === 'claude') {
     if (!activateClaude) throw new HubError('unsupported', 'CLI activation is not configured', 501);
     return activateClaude(

@@ -119,7 +119,7 @@ Discovery returns `peers` plus `gaps` identifying omitted instances (backend err
 
 Targets accept `{harness, instance, sessionId}` or `@claude/name` / `@codex/name`. Names are a one-time lookup; ambiguity fails and submission fixes the native address. Both endpoints need external delivery; missing target reply tools/listeners report unready without implicit attachment.
 
-The acknowledgement includes a request ID and asynchronous waiting guidance. Continue independent work or end the turn; a correlated external result arrives later. Intervening user requests remain separate. Failed writes are never automatically retried; errors include the request ID for owner diagnosis through `agenthub status --message-id UUID`. Another model `ask_agent` call is a new request, not a deduplicated retry.
+The acknowledgement includes a request ID and asynchronous waiting guidance. Continue independent work or end the turn; a correlated external result arrives later. Intervening user requests remain separate. Failed requests are never automatically retried; errors include the request ID for owner diagnosis through `agenthub status --message-id UUID`. Another model `ask_agent` call is a new request, not a deduplicated retry.
 
 ```sh
 agenthub connections --url http://127.0.0.1:3211 --token-file /ABS/owner.token
@@ -246,3 +246,39 @@ The tested entry point is an isolated interactive macOS terminal with Claude CLI
 npm run smoke:connector:cli -- --run
 npm run smoke:connector:codex -- --run --claude-cli
 ```
+
+## Disconnect
+
+```sh
+agenthub disconnect --harness codex --session-id ID
+agenthub reconnect --harness codex --session-id ID
+```
+
+`disconnect` is owner-only and takes effect for later operations without a Hub restart. Library and HTTP callers can target one session (`{ address }`) or one connector profile (`{ profileId }`), and the result reports how many bindings, credentials and lifecycle records were removed. The decision persists across restarts because a session could otherwise bind itself again on its next tool call.
+
+| Target          | New sessions                      | While disconnected                                                           |
+| --------------- | --------------------------------- | ---------------------------------------------------------------------------- |
+| `{ address }`   | Unaffected                        | That session's tools fail, and a canonical address gets `peer_not_connected` |
+| `{ profileId }` | Refused with `connector_disabled` | Every session of that profile fails                                          |
+
+`reconnect` takes the same target and reverses it without a handshake. The session enrolls again on its next tool call, including an MCP Claude session that `connect` can't activate. `changed` is false when nothing was disconnected. Owner `connect` also reverses a session disconnect and a disconnect of the profile matching its credential; if it throws, the disconnect is restored. Disconnect records aren't evicted: at 4096 records, a new `{ address }` disconnect is refused with `connector_capacity` until the owner reconnects older ones or disconnects the profile.
+
+Native MCP and hook configuration is not changed, and requests already accepted by a target are not cancelled. Delivery is checked again at the last moment, so a request or forwarded result that hasn't reached the target yet is refused. A disconnected session isn't listed, so asking for it by name reports a missing or ambiguous peer.
+
+With the `ConnectorService` option `connectedPeersOnly`, off by default, only sessions with a binding from a current, enabled profile can be listed or asked. Bindings are still not liveness signals.
+If the Hub is unavailable, `reply_agent` retries for up to 25 seconds with the same text, then returns an error containing the request ID. The Hub accepts a replay of identical text as a duplicate. A reply can still be lost in a longer outage if the agent doesn't retry. `ask_agent` is never retried.
+
+## Codex reply fallback
+
+A plain Codex session may print its answer without calling `reply_agent`, which leaves the requester waiting. Embedders can opt in with `new CodexAdapter({ replyFallback: true })`. It is off by default because `replied` otherwise means an explicit reply.
+
+When a request's turn ends, the adapter reads that turn:
+
+- If the turn starts with the request, contains no other input, and has exactly one final answer, that answer becomes the reply. Only item types a model produces itself are allowed after the request, so an unknown item counts as another input. `reply.metadata.source` is `turn_final_message`, and the forwarded result's origin name says the text came from a final answer.
+- Otherwise no text is sent, because a merged turn can contain the user's own work. The receipt gets `noReply: { reason, at }`, and a later real reply clears it. Reasons are `merged_turn`, `reply_call_failed`, `no_single_answer`, `turn_interrupted` and `turn_failed`.
+
+A returned answer isn't always an answer to the request: in real testing, a Codex session that declined an instruction from its peer had that refusal returned as the reply. `reply.metadata.source` shows when this happened.
+
+`noReply` is visible to the owner only. The requesting agent isn't notified yet, so a busy target can leave it waiting until the deadline. This was checked against turn shapes from Codex 0.166.0.
+
+> > > > > > > d4820f3 (feat: add opt-in Codex reply fallback)

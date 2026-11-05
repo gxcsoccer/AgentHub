@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- Skip the user config write when a matching Codex MCP entry is already effective through an override layer. Conflicting overrides are still refused.
+- Add `ClaudeAdapter` `supportsNativeVersion` for embedders with their own version policy. Sessions report the installed version and `nativeVersionSupported`, and `doctor` follows that result. The default remains the validated version list.
+- Add `ConnectorService` option `connectedPeersOnly`, off by default. Only sessions with a current binding can be listed or asked.
+- Add owner `disconnect` (library, `POST /v1/disconnect`, CLI) for one session or one connector profile, without a Hub restart. It persists until owner `reconnect` or `connect`, and `reconnect` works for MCP Claude sessions without a handshake. Native MCP and hook configuration is unchanged.
+- Reclaim stale bindings and lifecycle records at capacity instead of refusing with 429. Connector state moves to version 4, so roll back only from a state backup.
+- Add owner-only `listMessages` (library, `GET /v1/messages`) with an incremental cursor, request and reply text, and a `gap` flag when retained changes were removed.
+- Add owner-only `clearMessages` (library, `DELETE /v1/messages`). It removes finished messages and retained events atomically, keeps requests still waiting for a reply or forward, and reports both counts. Connector bindings and credentials are unaffected.
+- # Retry `reply_agent` for up to 25 seconds after a network failure or 5xx response, using the same text. The Hub treats a replay as a duplicate. `ask_agent` is still never retried. A longer outage returns an error with the request ID, so the reply can still be lost if it isn't retried.
+- Add `CodexAdapter` option `replyFallback`, off by default. When a request's turn ends without `reply_agent`, its final answer becomes the reply only if that request was the turn's sole input. The reply is labeled with its source. Otherwise the receipt gets `noReply` with a reason, and no text is sent.
+  > > > > > > > d4820f3 (feat: add opt-in Codex reply fallback)
+
 ## 0.3.0 — 2026-11-05
 
 - Add plugin-free local MCP setup with absolute launch paths, scoped caller credentials and inherited-owner-token removal. A local Doubao CLI plugin and allowlisted ZIP packaging remain optional; bilingual guides cover both paths.
