@@ -1,5 +1,13 @@
 # 验证说明
 
+## 0.4.0 发布检查（2026-11-06）
+
+PR #9 已合并。包和 OpenAPI 版本设为 0.4.0 后，`npm run check` 通过 **274 项测试**（核心 205、保留 Bridge 41、脚本 28），覆盖率为**行 96.88%、分支 88.53%、函数 94.72%**。`npm run test:package` 通过全新安装、五个导出、两个二进制、HTTP/SQLite 和已安装的 setup CLI。
+
+真实运行使用隔离 home、Codex 0.166.0 TUI 和 Claude 2.1.318。最后一次代码改动 `60e0ff3` 通过了：会话和 profile 的断开与恢复、会话断开期间新会话登记、单独一轮的回复兜底、合并轮次的 `noReply` 且未泄漏用户工作，以及 Hub 被 SIGKILL 后的结果转发（2/2，Claude 到 Claude）。`4700953` 通过了 11.8 秒中断下的回复重试（模型只调用一次）和 `gap: true`。普通 TUI 中有一次真实的 `reply_agent` 调用成功。
+
+尚未验证：`reply_call_failed`、`turn/completed` 能否到达这条连接（由轮询兜底）、Codex 作为发起方时跨 Hub 重启的转发，以及回复兜底轮次中的 `fileChange`、`webSearch`、`plan`。25 秒重试窗口是估计值。普通 TUI 处理任务并不稳定，详见[路线图](ROADMAP.zh-CN.md)。早期的拒绝实验受到含 `Use no tools` 的测试提示词污染。未接触任何工作会话。
+
 ## 0.3.0 发布检查（2026-11-05）
 
 PR #3 已合并。包版本与 OpenAPI 更新为 0.3.0 后，`npm run check` 通过 **250 项测试**（核心 181、保留 Bridge 41、脚本 28）；覆盖率为**行 96.66% / 分支 88.11% / 函数 94.52%**。CLI、MCP 和连接器版本信息统一读取包清单。本版新增统一 setup 与实验性豆包宿主登记，相较 0.2.0，核心 SQLite schema 不变。

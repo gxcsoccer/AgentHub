@@ -30,7 +30,7 @@ npm install -g @gxcsoccer/agenthub
 agenthub --help
 ```
 
-0.3.0 adds Doubao integration and unified `setup`, alongside the session connectors and `connect` introduced in 0.2.0. Before upgrading, stop the Hub and back up its state directory; upgrade connector processes with the Hub. The core SQLite schema is unchanged from 0.2.0. Upgrades from 0.1.0 still require the [migration notes](CHANGELOG.md#upgrade-notes--升级说明).
+0.4.0 adds owner disconnect and reconnect, message listing and clearing, and embedding options for Codex and Claude. Before upgrading, stop the Hub and back up its state directory; upgrade connector processes with the Hub. Connector state moves to version 4, so rolling back needs that backup. Upgrades from 0.1.0 still require the [migration notes](CHANGELOG.md#upgrade-notes--升级说明).
 
 ## Run from source
 

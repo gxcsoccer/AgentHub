@@ -30,7 +30,7 @@ npm install -g @gxcsoccer/agenthub
 agenthub --help
 ```
 
-0.3.0 新增豆包接入和统一 `setup`，并保留 0.2.0 引入的会话连接器与 `connect`。升级前请停止 Hub 并备份状态目录，连接器进程需与 Hub 同步升级。相较 0.2.0，核心 SQLite schema 不变；从 0.1.0 升级仍需遵循[迁移说明](CHANGELOG.md#upgrade-notes--升级说明)。
+0.4.0 新增所有者断开与恢复、消息列表与清空，以及面向嵌入方的 Codex 和 Claude 选项。升级前请停止 Hub 并备份状态目录，连接器进程需与 Hub 同步升级。连接器状态升至版本 4，回滚需要该备份；从 0.1.0 升级仍需遵循[迁移说明](CHANGELOG.md#upgrade-notes--升级说明)。
 
 ## 启动
 

@@ -265,6 +265,7 @@ agenthub reconnect --harness codex --session-id ID
 原生 MCP 和 hook 配置不会改动，目标已经接受的请求也不会取消。投递前的最后一刻还会再检查一次，所以尚未到达目标的请求或转发结果会被拒绝。已断开的会话不会被列出，所以按名字询问时报告的是找不到或有歧义。
 
 `ConnectorService` 的 `connectedPeersOnly` 选项默认关闭。打开后，只有绑定来自当前已启用 profile 的会话才能被列出或询问。绑定仍然不代表会话存活。
+
 Hub 不可用时，`reply_agent` 会用相同内容重试，最长 25 秒，之后返回包含请求 ID 的错误。Hub 把相同内容的重放当作重复处理。如果中断时间更长且 Agent 没有再次重试，回复仍可能丢失。`ask_agent` 不会自动重试。
 
 ## Codex 回复兜底
@@ -279,5 +280,3 @@ Hub 不可用时，`reply_agent` 会用相同内容重试，最长 25 秒，之�
 取回的回答不一定是对请求的答复：真实测试中，Codex 会话拒绝了对端的指令，这句拒绝被当成回复返回。`reply.metadata.source` 可以看出是否属于这种情况。
 
 `noReply` 只有所有者能看到，发起方的 Agent 目前收不到通知，所以目标正忙时它可能一直等到期限。这部分按 Codex 0.166.0 的 turn 结构核对过。
-
-> > > > > > > d4820f3 (feat: add opt-in Codex reply fallback)
