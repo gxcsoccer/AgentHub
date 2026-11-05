@@ -2,17 +2,14 @@
 
 通过 **本地 stdio MCP**，豆包可以向授权的 Claude/Codex 会话发起请求并取回回复，无需安装 AgentHub 插件。macOS 上的豆包工作 **2.35.15** 已在独立测试对话中加载七个工具，并显示两个 harness 的真实回复。验证记录区分宿主观察与后端自动测试。
 
-当前开发分支新增统一 `agenthub setup` 命令。已发布的 **0.2.0** 提供底层 CLI/MCP API，**尚不包含这些 setup 命令**。豆包原生对话身份、任意已有会话发现/历史、主动唤醒仍属后续范围。
+**0.3.0** 的 npm 包新增统一 `agenthub setup` 命令。豆包原生对话身份、任意已有会话发现/历史、主动唤醒仍属后续范围。
 
-## 构建与选择目标
+## 安装与选择目标
 
-需要 Node.js 22.13+ 和本分支源码。新版本发布前，在仓库中用临时 shell 函数运行源码 CLI：
+需要 Node.js 22.13+，安装发布包后执行：
 
 ```sh
-npm ci
-npm run build
-AGENTHUB_CLI="$PWD/dist/src/cli.js"
-agenthub() { node "$AGENTHUB_CLI" "$@"; }
+npm install -g @gxcsoccer/agenthub@0.3.0
 agenthub setup targets --harness claude
 agenthub setup targets --harness codex
 ```
@@ -44,7 +41,7 @@ agenthub setup init --targets /ABS/targets.json
 
 ## 启动、连接并在豆包加载
 
-在独立终端中用同一份源码 CLI 启动受管理的 Hub：
+在独立终端中用同一份已安装 CLI 启动受管理的 Hub：
 
 ```sh
 agenthub setup serve --directory "$HOME/.agenthub/doubao"

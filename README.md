@@ -30,7 +30,7 @@ npm install -g @gxcsoccer/agenthub
 agenthub --help
 ```
 
-0.2.0 adds session connectors and unified `connect`. Before upgrading, stop the Hub and back up its state directory; older versions cannot read the migrated state. Upgrade connector processes with the Hub. See [upgrade notes](CHANGELOG.md#upgrade-notes--升级说明).
+0.3.0 adds Doubao integration and unified `setup`, alongside the session connectors and `connect` introduced in 0.2.0. Before upgrading, stop the Hub and back up its state directory; upgrade connector processes with the Hub. The core SQLite schema is unchanged from 0.2.0. Upgrades from 0.1.0 still require the [migration notes](CHANGELOG.md#upgrade-notes--升级说明).
 
 ## Run from source
 
@@ -120,7 +120,7 @@ env -u AGENTHUB_TOKEN agenthub mcp --origin-name 'Doubao Work' \
 
 This stdio facade uses the official MCP TypeScript SDK and exposes seven tools: `list_instances`, `list_sessions`, `get_session`, `get_history`, `search_history`, `send_message`, `get_message_status`. It connects to the same local daemon. Approval and lifecycle mutation tools are not exposed to agents.
 
-[Doubao setup](docs/DOUBAO.md) provides target selection, private configuration, managed Hub lifecycle and an optional local CLI plugin. The development branch adds `agenthub setup` and explicit CDP-based host registration for Doubao 2.35.15. Real Doubao STDIO requests returned visible Claude/Codex replies; automatic host creation/removal passed a separate five-check run. These setup commands require the development build and are not in npm 0.2.0. Native Doubao identity and proactive wake-up remain unimplemented.
+[Doubao setup](docs/DOUBAO.md) in 0.3.0 provides target selection, private configuration, managed Hub lifecycle and an optional local CLI plugin. `agenthub setup` includes explicit CDP-based host registration for Doubao 2.35.15. Real Doubao STDIO requests returned visible Claude/Codex replies; automatic host creation/removal passed a separate five-check run. Native Doubao identity and proactive wake-up remain unimplemented.
 
 ## Verification and limits
 

@@ -1,5 +1,11 @@
 # Verification
 
+## 0.3.0 release checks (2026-11-05)
+
+PR #3 is merged. With the package and OpenAPI version set to 0.3.0, `npm run check` passes **250 tests** (181 core, 41 retained bridge, 28 script checks); coverage is **96.66% lines / 88.11% branches / 94.52% functions**. CLI, MCP and connector version metadata follow the package manifest. The release adds unified setup and experimental Doubao host registration without changing the core SQLite schema from 0.2.0.
+
+`npm run test:package` passes fresh installation, five exports, both binaries, HTTP/SQLite and the installed setup CLI. Real Doubao acceptance was performed at `9c37af1` before the recovery/reporting fixes; the 17 host/backend checks and five API lifecycle checks below were not rerun for the version bump. This release verification uses local fixtures and isolated package installation, with no working sessions contacted. Private reports are under `.local/verification/release-0.3.0-*`.
+
 ## PR #3 cleanup reporting and target discovery (2026-11-05)
 
 `npm run check` passes **250 tests** (181 core, 41 retained bridge, 28 script checks); coverage is **97.08% lines / 88.37% branches / 94.52% functions**. Five new process tests exercise the compiled `setup targets` CLI against an isolated Claude executable and Codex WebSocket/Unix-socket fixture: discovery, both pagination paths, empty results, malformed responses/cursors, invalid harnesses and unavailable backends. They verify read-only calls, connection closure and absence of generated configuration or state. Existing uninstall tests now assert all four Doubao cleanup states, separately unchecked native configuration and repeat-uninstall consistency, including compiled CLI output after verified host removal.

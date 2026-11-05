@@ -1,12 +1,16 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 — 2026-11-05
 
 - Add plugin-free local MCP setup with absolute launch paths, scoped caller credentials and inherited-owner-token removal. A local Doubao CLI plugin and allowlisted ZIP packaging remain optional; bilingual guides cover both paths.
 - Add unified setup target discovery, private generation, managed serve/connect/doctor/disable/enable/uninstall, plus explicit experimental Doubao 2.35.15 CDP registration, enable/disable and removal with ownership checks and uncertain-create recovery.
 - Recover failed host registration with offline cleanup before creation or an exact-name `host-forget` acknowledgment that retains uncertain host records. Allow cleanup with unrelated port services, distinguish unknown ownership, and share UUID validation between initialization and manifest loading.
 - Report verified Doubao removal separately from unchecked native connector configuration during uninstall. Add isolated CLI discovery tests for Claude/Codex pagination, empty results, malformed responses, unavailable backends and read-only behavior.
 - Verify real Doubao STDIO requests and visible replies from isolated Claude/Codex sessions, and a separate five-check host API lifecycle. Busy host interleaving/disconnect remain unverified; native identity and proactive wake-up remain unimplemented. No store publication is performed.
+
+Upgrade the Hub and connector processes together; Codex MCP handshakes require matching package versions. This release introduces generated setup manifests without changing the core SQLite schema from 0.2.0. Stop the Hub and back up its state before upgrading. Native MCP configuration cleanup remains manual.
+
+本版新增统一 `agenthub setup`、无需插件的豆包本地 MCP 接入及实验性宿主登记 API，并补齐异常恢复与清理状态报告。升级前请停止 Hub 并备份状态；Hub 与连接器进程需同步升级。相较 0.2.0，核心 SQLite schema 不变。豆包宿主 API 仅验证 2.35.15，需显式开启 CDP；CLI 不自动重启豆包，原生 MCP 配置仍需手工清理。
 
 ## 0.2.0 — 2026-11-05
 

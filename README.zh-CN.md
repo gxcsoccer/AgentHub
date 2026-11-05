@@ -30,7 +30,7 @@ npm install -g @gxcsoccer/agenthub
 agenthub --help
 ```
 
-0.2.0 新增会话连接器和统一 `connect`。升级前请停止 Hub 并备份状态目录；旧版无法读取迁移后的状态。连接器进程需与 Hub 同步升级。详见[升级说明](CHANGELOG.md#upgrade-notes--升级说明)。
+0.3.0 新增豆包接入和统一 `setup`，并保留 0.2.0 引入的会话连接器与 `connect`。升级前请停止 Hub 并备份状态目录，连接器进程需与 Hub 同步升级。相较 0.2.0，核心 SQLite schema 不变；从 0.1.0 升级仍需遵循[迁移说明](CHANGELOG.md#upgrade-notes--升级说明)。
 
 ## 启动
 
@@ -117,7 +117,7 @@ env -u AGENTHUB_TOKEN agenthub mcp --origin-name 'Doubao Work' \
 
 MCP 使用官方 SDK，提供会话发现、详情、历史、消息提交和状态查询、全文检索共七个工具。面向 agent 的工具不开放审批、恢复或中断操作。[配置模板](examples/mcp.json)。
 
-[豆包接入](docs/DOUBAO.zh-CN.md)提供目标选择、私有配置生成、Hub 生命周期和可选 CLI 插件。开发分支新增 `agenthub setup`，并支持通过显式 CDP 端口自动登记豆包 2.35.15 连接器。真实豆包 STDIO 对话已显示 Claude/Codex 回复；自动创建/移除另通过 5 项检查。这些 setup 命令需要开发分支构建，尚不在 npm 0.2.0 中。豆包原生身份与主动唤醒仍未实现。
+0.3.0 的[豆包接入](docs/DOUBAO.zh-CN.md)提供目标选择、私有配置生成、Hub 生命周期和可选 CLI 插件。`agenthub setup` 支持通过显式 CDP 端口自动登记豆包 2.35.15 连接器。真实豆包 STDIO 对话已显示 Claude/Codex 回复；自动创建/移除另通过 5 项检查。豆包原生身份与主动唤醒仍未实现。
 
 ## 验证与边界
 

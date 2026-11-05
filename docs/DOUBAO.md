@@ -2,17 +2,14 @@
 
 Use **local stdio MCP** to request work from authorized Claude/Codex sessions and retrieve replies in Doubao, without installing an AgentHub plugin. On macOS, Doubao Work **2.35.15** loaded the seven tools and displayed real replies from both harnesses in an independent test conversation. The verification record separates host observation from backend tests.
 
-This development branch adds the unified `agenthub setup` commands. Published **0.2.0** supplies the underlying CLI/MCP API; it does **not** include these setup commands. Native Doubao conversation identity, arbitrary session discovery/history and proactive wake-up remain future work.
+**0.3.0** adds the unified `agenthub setup` commands to the npm package. Native Doubao conversation identity, arbitrary session discovery/history and proactive wake-up remain future work.
 
-## Build and select targets
+## Install and select targets
 
-Use Node.js 22.13+ and this checkout. Until the next release, run the source CLI with a temporary shell function:
+Use Node.js 22.13+ and install the release:
 
 ```sh
-npm ci
-npm run build
-AGENTHUB_CLI="$PWD/dist/src/cli.js"
-agenthub() { node "$AGENTHUB_CLI" "$@"; }
+npm install -g @gxcsoccer/agenthub@0.3.0
 agenthub setup targets --harness claude
 agenthub setup targets --harness codex
 ```
@@ -44,7 +41,7 @@ Files include separate owner/caller/enrollment tokens, target-specific read/send
 
 ## Start, connect and load in Doubao
 
-Run the managed Hub in its own terminal, using the same source CLI:
+Run the managed Hub in its own terminal, using the same installed CLI:
 
 ```sh
 agenthub setup serve --directory "$HOME/.agenthub/doubao"
