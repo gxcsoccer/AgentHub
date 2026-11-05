@@ -643,6 +643,35 @@ test('a profile mcpCommand is written and compared in place of the install path'
   );
 });
 
+test('a launcher without arguments matches an entry whose args Codex omitted', async (t) => {
+  const f = await fixture(t),
+    address = { harness: 'codex', instance: 'local', sessionId: f.a };
+  const entry = { command: '/data/meno-mcp' };
+  f.rpc.handlers.set('config/read', () => ({
+    config: { mcp_servers: { agenthub: entry } },
+    layers: [
+      {
+        name: { type: 'user', file: '/private/config.toml' },
+        version: 'v1',
+        config: { mcp_servers: { agenthub: entry } },
+      },
+    ],
+  }));
+  const installed = await f.adapter.installConnector(address, 'agenthub', {
+    command: '/data/meno-mcp',
+    args: [],
+  });
+  assert.equal(installed.changed, false);
+  await assert.rejects(
+    f.adapter.installConnector(address, 'agenthub', { command: '/other', args: [] }),
+    /differs/,
+  );
+  await assert.rejects(
+    f.adapter.installConnector(address, 'agenthub', { command: '/data/meno-mcp', args: ['x'] }),
+    /differs/,
+  );
+});
+
 test('owner connect validates profiles and requires current native identity, not historical bindings', async (t) => {
   const f = await fixture(t),
     dir = await mkdtemp('/tmp/ah-codex-onboarding-');
