@@ -2,6 +2,7 @@ import { McpServer } from '@modelcontextprotocol/server';
 import { StdioServerTransport } from '@modelcontextprotocol/server/stdio';
 import * as z from 'zod/v4';
 import { AgentHubClient } from './client.js';
+export { createConnectorMcpServer, serveConnectorMcp } from './connectors/mcp.js';
 
 const scope = z.object({
   harness: z.string().min(1),
@@ -95,6 +96,7 @@ export function createMcpServer(client: AgentHubClient, originName = 'AgentHub M
         'Send external content to a running session. Explicit tool_output (Codex) or peer_message (Claude); never user input. Reuse messageId only for the identical payload. Acceptance is not proof of a reply. Optional replyTo forwards the first correlated reply once.',
       inputSchema: z.object({
         messageId: z.string().uuid(),
+        messageKind: z.enum(['request', 'result']).optional(),
         to: address,
         delivery: z.enum(['tool_output', 'peer_message']),
         text: z.string().min(1).max(100000),

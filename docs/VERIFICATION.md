@@ -1,5 +1,65 @@
 # Verification
 
+## 2026-11-05: Claude CLI activation and mixed transports (unreleased)
+
+`npm run check` passed **130 main-project + 41 Bridge + 21 test-process safety checks: 192 total**, with **96.95% / 88.10% / 94.99%** main-project line/branch/function coverage. `npm run test:package` passed temporary installation, exports, CLIs, HTTP and SQLite checks. New contracts cover process ancestry/start identity, UUID changes, credential separation/revocation, activation correlation, text replies not establishing readiness, expiry/explicit retry, discovery failure not committing readiness, and restricted CLI entry points with inferred origins.
+
+`smoke:connector:cli -- --run` passed **ten live checks** on macOS + Claude Code 2.1.318. Three fresh PTYs were used: two were activated through the production owner CLI after startup and an ordinary model turn; a third lacked Bash and remained unverified despite native receipt/reply, with no resend on repeated connect. Positive cases cover both Claude initiators, request/reply/result, durable activation/bindings across graceful Hub restart, an independent user turn before the correlated result, reconnecting a new UUID after clear, old in-flight reply isolation, and results without business replies.
+
+`smoke:connector:codex -- --run --claude-cli` passed **seven further live checks**, using Codex App Server 0.166.0 and Claude 2.1.318: MCP installation/read-only enrollment into an existing Codex root, native CLI activation of an existing Claude session, real MCP metadata, idempotent onboarding preserving permissions, both cross-harness request/reply/result directions, and result termination. Codex activation itself used no model turn; Claude activation did. Neither thread/resume nor native dynamic reply tools were used.
+
+The test owner preauthorized the precise CLI command for the two successful targets. Runtime connect installed no skills/MCP/hooks and changed no host permissions. The production Hub independently verified ancestry/native discovery instead of trusting caller-supplied ancestors. A preliminary three-check probe verified triggering without a skills directory and fresh environment identity after clear; it is not counted as production acceptance.
+
+Failed attempts are retained: an initial probe command containing shell environment expansion was denied by existing Bash rules. The first production run quoted every safe path and was also denied by the fixture rule; connect did not return success. Rendering now quotes arguments only when shell syntax requires it. Fresh isolated runs passed without broadening permissions. This establishes only the tested commands/rules, not other permission combinations.
+
+Private 0600 reports: `.local/verification/connector-claude-cli-live.json` and `connector-codex-claude-cli-live.json`; failed evidence: `claude-cli-activation-spike.json` and `connector-claude-cli-quoted-command-live.json`, with adjacent terminal logs. All three Claude fixture groups and the mixed test's Claude/App Server stopped; the Codex thread was archived, temporary directories/copied authentication removed. Working sessions were untouched. Do not publish private evidence.
+
+Scope: this is model-driven activation explicitly enabled with `transport: cli`, subject to existing permissions, not Claude external MCP reload or a guarantee of permission-free access. The independent user turn finishes before result arrival; graceful restart does not prove forced-crash recovery. Real busy activation, full concurrency/deadline matrices, queued-before-clear, Linux/Windows/desktop/SDK remain unaccepted. Connector registry version 3 reads versions 1/2; activation metadata has version 1, while core message storage remains schema 3. Activation records are bounded at 256; automatic collection is pending. See [setup](CONNECTOR_SETUP.md).
+
+## 2026-11-05: Codex connector and unified connect (partial phase 3, unreleased)
+
+`npm run check` passed 124 main-project tests, 41 Bridge tests and 21 test-process safety checks: **186 total**, with **96.80% / 88.17% / 94.80%** main-project line/branch/function coverage. New coverage includes per-call identity and connection nonce verification, concurrent identities in one MCP process, configuration version conflicts, repeated onboarding, the read-only handshake and rejection of historical bindings as current readiness. `npm run test:package` passed temporary package installation, public exports, CLIs, HTTP and SQLite recovery.
+
+`npm run smoke:connector:codex -- --run` passed **six live checks** on macOS, Codex App Server 0.166.0 and Claude Code 2.1.318:
+
+1. Production `agenthub connect` installed configuration, reloaded MCP, enrolled identity and returned ready for an idle Codex root created before MCP installation, without starting a model turn.
+2. A subsequent real Codex MCP call verified host metadata and the connection nonce; discovery correctly reported the current session's connector reply readiness.
+3. Repeated connect skipped reload and preserved existing tool permissions.
+4. Claude initiated a request, Codex used `reply_agent`, and Claude actually read the correlated result.
+5. Codex initiated a request, Claude replied, and Codex actually read the correlated result.
+6. Results received no business replies. No native dynamic reply tool was registered and no `thread/resume` call occurred.
+
+The first owner handshake uses native `mcpServer/tool/call`, which injects `threadId`. Model calls also include `sessionId`; it must match when present. Both routes verify the native MCP connection nonce in the configured instance. Discovery reports connector readiness for the just-verified source; other configured Codex peers are checked on `ask_agent`, avoiding misleading legacy dynamic-tool status.
+
+The runner used only an independent App Server/home/socket and a fresh Claude PTY with its connector loaded at startup. The test owner separately authorized the three fixture tools; the installer preserved permissions. Cleanup archived the Codex thread, stopped both process groups and removed temporary state/copied authentication. Private evidence is ignored at `.local/verification/connector-codex-live.json`; do not publish it.
+
+This covers idle roots and the listed versions, not busy Codex reload, CLI/TUI/desktop entry points, other platforms or external automatic activation of arbitrary existing Claude sessions. Reload affects the entire App Server instance. Owners must still prepare connector profiles and caller grants; automatic profile generation, uninstall and full readiness diagnostics remain pending. See [setup](CONNECTOR_SETUP.md).
+
+## 2026-11-05: Claude connector core (phase 2, unreleased)
+
+`npm run check` passed 119 main-project tests, 41 Bridge tests and 21 test-process safety checks: **181 total**. Main-project line/branch/function coverage is **96.96% / 88.84% / 94.55%**. New coverage includes process identity, credential separation, SQLite reopen, native-directory changes, pagination/capacity limits, ambiguous names, revocation, cross-session reply rejection, CLI configuration and the official MCP client roundtrip.
+
+`npm run test:package` also passed: pack/install in a temporary directory, connector public exports, both CLIs, HTTP and SQLite recovery. The package excluded private reports and test files.
+
+`npm run smoke:connector -- --run` passed **nine live checks** on macOS + Claude 2.1.318: two native Claude MCP processes enrolled; actual ask/reply/result roundtrip; graceful Hub restart retained bindings and live process credentials; the second Claude initiated a request; an intervening independent user turn completed before its correlated result; real SessionStart refreshed identity after `/clear`; an old in-flight reply did not follow the new UUID; the new UUID completed another roundtrip; results produced no business replies.
+
+Models were authorized only for the three test MCP tools, with no shell/file tools. Production CLI/hooks loaded at startup; the Hub discovered only the two owned PIDs/cwds. The final report confirms both process groups stopped and temporary configuration/state directories were removed. Private ignored evidence is `connector-claude-live.json` and adjacent terminal logs; do not publish it. The initial runner failed to normalize macOS `/tmp` versus `/private/tmp`; the corrected runner passed. The failed attempt remains `connector-claude-live-path-failure.json`.
+
+This is not external automatic activation of arbitrary existing sessions. The user-turn case completes before result delivery, not every busy interleaving. Restart was graceful, not connector SIGKILL acceptance. Linux has process-reader fixtures only. Other hosts/platforms, queued-before-clear, real PID reuse and the complete concurrency/deadline matrix remain pending. See [configuration and limits](CONNECTOR_SETUP.md).
+
+## 2026-11-05: connector phase 1 (unreleased)
+
+At phase-1 acceptance, feat/agent-connector implemented messageKind, result rendering in both adapters, ingress/core guards and schema 3 compatibility. Automatic enrollment, minimal tools and connect were unimplemented at that point; see phase 2 above for subsequent work. This section covers the new implementation; historical evidence below retains its original scope.
+
+- npm run check passed 103 main-project tests, 41 retained Bridge tests and 21 test-process safety checks: 165 total. Main-project line/branch/function coverage is 96.48% / 87.85% / 93.98%. Coverage includes legacy payload idempotency, HTTP/MCP propagation, forced reply rejection, persistence and recovery guards.
+- macOS, Claude 2.1.318 and Codex 0.166.0, with a separate App Server and newly created allowlisted sessions. The updated smoke:isolated passed seven checks. Both real models emitted an observation marker containing the new result ID and body, without a business reply on the result receipt.
+- smoke:recovery passed seven checks: explicit busy-session reattachment, late replies and one forward after Hub SIGKILL, durable SSE cursors and another restart. Real Codex output confirms the result was read while its receipt remains accepted without another business reply.
+- The first recovery run failed before result acceptance: an old assertion expected a cursor to expire on restart, conflicting with the existing schema 2 durable-event contract. After correcting it to replay through ready without a gap, a fresh isolated run passed. The failed attempt remains recorded and is not counted as a pass.
+
+Private 0600 reports: .local/verification/connector-isolated.json and connector-recovery.json; the failed attempt is connector-recovery-stale-assertion.json. Test processes exited, owned threads were archived/unloaded, and temporary App Servers/copied test authentication were removed. Working sessions were untouched. This does not cover automatic enrollment, Claude automatic activation or two-Claude autonomous collaboration.
+
+Schema 3 upgrades older stores and older binaries refuse it; rollback requires a pre-upgrade copy. Verification used temporary databases and did not upgrade a working Hub's state.
+
 [简体中文](VERIFICATION.zh-CN.md)
 
 ## Automated checks
@@ -9,7 +69,7 @@ npm ci
 npm run check
 ```
 
-The suite contains 97 AgentHub tests, the 41 original Codex Session Bridge tests and 21 live-runner safety tests: 159 tests on Linux/macOS. The root check also runs formatting, strict TypeScript checks and coverage thresholds. The imported bridge is tested from its own directory, preserving its original fixtures and contract.
+The pre-connector baseline contains 97 AgentHub tests, the 41 original Codex Session Bridge tests and 21 live-runner safety tests: 159 tests on Linux/macOS. Current local results are recorded in the phase sections above. The root check also runs formatting, strict TypeScript checks and coverage thresholds. The imported bridge is tested from its own directory, preserving its original fixtures and contract.
 
 AgentHub coverage includes concurrent idempotency, capacity/expiry, payload conflicts, uncertain delivery, early/late replies, bounded reply forwarding, shutdown races, Codex tool-output delivery and explicit approval responses, Claude NDJSON framing and reverse callbacks over local test sockets, policy controls, malformed/expired callbacks, bounded history and cursor changes, authentication/origins, malformed HTTP requests, the original JSON CLI commands, all seven current MCP tools through a real stdio child, SSE slow consumers/CRLF/multiline frames, and OpenAPI consistency.
 
@@ -149,3 +209,21 @@ The local check passed 97 AgentHub, 41 retained bridge and 18 script-safety test
 Real ACP passed all seven checks with Claude 2.1.318 / Codex 0.166.0, confirmed descendant exit and reported `credentialsRemoved: true`. Independent native backends passed all seven checks with Claude 2.1.318 and Codex 0.166.0 / 0.165.0 using the new supervisor. Reports: `.local/verification/review-followup-acp-live.json` and `review-followup-independent-backends.json`. Package installation again passed five exports, both CLIs, HTTP, SQLite and empty-event cursor recovery. The full native-version matrix and 30-minute synthetic soak were not repeated: native protocol and load code are unchanged. The compatibility runner's new owned-command wrapper is covered by deterministic command tests, not a new complete native-matrix run.
 
 Final diagnostic follow-up: `npm run check` passed 159 tests (97 AgentHub, 41 bridge, 21 script tests). Three new isolated-process cases verify original command/startup errors and stderr survive a secondary cleanup failure, and cleanup-only failures still reject. The three-second grace period is intentionally retained because command exit alone does not prove descendant shutdown. This change affects error reporting only; real-model acceptance and the long soak were not rerun.
+
+## Connector PR review corrections (2026-11-05)
+
+The review regressions cover all nine findings: unrelated oversized/offline instances produce discovery gaps without blocking a Claude alias or activation; incomplete same-harness discovery still rejects ambiguous aliases; new late replies fail before acceptance; dash-prefixed CLI messages pass through ask/reply; failed/rejected activation is visible and explicitly retryable while unknown delivery stays reserved; expired activation collection preserves bounded replay protection; credential refresh preserves the original ID/deadline and never retries uncertainty; Codex target checks consider multiple profiles; repeated/concurrent installs avoid reload storms; and one CLI enrollment plus canonical ask uses three native listings with a fresh pre-send check. Legacy activation records upgrade from v1 to v2, including conservative behavior when the replay filter is saturated.
+
+`npm run check` passed 208 tests (144 AgentHub, 41 retained bridge, 23 runner safety). Source coverage: 96.97% lines, 88.75% branches, 94.83% functions. Package installation passed five exports, both CLIs, HTTP, SQLite and event-cursor recovery. Large-directory, expired-credential, capacity, multi-profile and reload-cooldown cases use deterministic fixtures; their native latency/scale impact is not measured.
+
+Real isolated macOS acceptance passed Claude CLI's ten checks (Claude 2.1.318), including unavailable Bash, restart, intervening user turns and clear isolation, plus seven bidirectional Claude CLI / Codex MCP checks (Codex 0.166.0). Owned process exit, thread archive and temporary/authentication cleanup were confirmed. Private reports: `.local/verification/pr2-fix-connector-claude-cli-live.json` and `pr2-fix-connector-codex-claude-cli-live.json`.
+
+The first cross-harness attempt stopped on an early empty Codex `thread/read` turn marked `interrupted` with no completion time, before a model tool call. The runner previously treated any non-inProgress snapshot as final. It now observes the matching native `turn/completed` notification before reading completed history, handles notifications arriving before the start response, and fails on real interruption/timeout without resubmitting. Two new runner tests cover this race and listener cleanup. The failed attempt and its successful owned-resource cleanup remain in private `pr2-fix-first-connector-codex-claude-cli-live.json`; the fresh run passed all seven checks. Windows, the adjacent-version matrix and the long synthetic soak were not rerun for these connector corrections.
+
+## Connector follow-up closeout (2026-11-05)
+
+All three non-blocking follow-ups are addressed. Codex peer discovery now pages the loaded inventory while preserving normal historical listing and session-scoped read grants. A read-only pre-fix sample had 99 notLoaded threads among the first 100 history results and one loaded thread; this is a sample, not a total-history count. Tests use 1,100 historical threads plus paginated loaded roots, a child and an unloading race to verify discovery and alias routing without a history scan.
+
+Activation collection now prefers unverified expired records, removes only enough records for admission, and skips collection when replacing the same key. Tests preserve existing verified readiness and replay protection. Credential records retain a 60-second expiry-classification grace period; an HTTP test advances the clock across expiry while another enrollment writes the registry, then verifies one refresh, unchanged message ID/deadline and exactly one submission. Expired credentials remain invalid, owner revocation takes precedence, and records are pruned at the grace boundary. Six regression assertions failed before the fixes and passed afterward.
+
+`npm run check` passed 214 tests (150 AgentHub, 41 retained bridge, 23 runner safety), with 96.99% line, 88.82% branch and 94.93% function source coverage. Package installation again passed five exports, both CLIs, HTTP, SQLite and event-cursor recovery. Fresh macOS Claude 2.1.318 / Codex 0.166.0 isolated acceptance passed eight checks, adding native loaded-peer discovery to the existing two-way CLI/MCP round trip. Owned processes stopped, the owned thread was archived, and temporary files/copied authentication were removed. Private report: `.local/verification/pr2-closeout-connector-codex-claude-cli-live.json`. Large-directory and capacity boundaries remain deterministic fixture coverage; the separate ten-check Claude-only run, adjacent-version matrix, Windows live integration and long soak were not repeated.

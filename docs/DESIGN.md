@@ -2,6 +2,8 @@
 
 One API across coding harnesses. The library connects to existing processes; it does not resume, restart, or interrupt them implicitly.
 
+The proposed [automatic connections and minimal-awareness collaboration](AGENT_CONNECTOR.md) design defines session binding, role addressing and smaller collaboration tools. Those additions are not implemented yet.
+
 ## Boundaries
 
 - Core: composite session addresses, discovery, detail, history, explicit delivery semantics, idempotency, receipts, bounded event replay, and optional correlated reply forwarding.

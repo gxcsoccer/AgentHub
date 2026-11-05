@@ -17,6 +17,16 @@ test('published unified OpenAPI matches runtime and preserves explicit delivery 
     spec.paths['/v1/messages'].post.responses[202].content['application/json'].schema.$ref,
     '#/components/schemas/Receipt',
   );
-  assert.equal(Object.keys(spec.paths).length, 13);
+  assert.equal(Object.keys(spec.paths).length, 18);
+  const connector =
+    spec.paths['/v1/connector/call'].post.requestBody.content['application/json'].schema;
+  assert.equal(connector.additionalProperties, false);
+  assert.deepEqual(
+    connector.properties.operation.oneOf.map(
+      (operation: { properties: { operation: { const: string } } }) =>
+        operation.properties.operation.const,
+    ),
+    ['identity', 'activate', 'list_peers', 'ask', 'reply'],
+  );
   assert.equal(spec.paths['/v1/session/attach-reply'].post.operationId, 'attachReplyRoute');
 });

@@ -1,16 +1,28 @@
-import { lstat, readFile } from 'node:fs/promises';
+import { open } from 'node:fs/promises';
+import { constants } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { AccessPolicy, type CallerCredential, type CallerPolicy } from './access.js';
 import { HubError, object, text } from './validation.js';
-async function privateRead(path: string) {
-  const stat = await lstat(path);
-  if (!stat.isFile() || stat.nlink !== 1 || stat.uid !== process.getuid?.() || stat.mode & 0o077)
-    throw new HubError(
-      'unsafe_credentials',
-      'Access configuration and tokens must be private owner files',
-      403,
-    );
-  return readFile(path, 'utf8');
+export async function privateRead(path: string) {
+  const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  try {
+    const stat = await file.stat();
+    if (
+      !stat.isFile() ||
+      stat.nlink !== 1 ||
+      stat.uid !== process.getuid?.() ||
+      stat.mode & 0o077 ||
+      stat.size > 1024 * 1024
+    )
+      throw new HubError(
+        'unsafe_credentials',
+        'Access configuration and tokens must be private owner files under 1 MiB',
+        403,
+      );
+    return await file.readFile('utf8');
+  } finally {
+    await file.close();
+  }
 }
 export async function loadAccessFile(
   filename: string,

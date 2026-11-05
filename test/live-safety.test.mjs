@@ -4,9 +4,73 @@ import { mkdtemp, mkdir, writeFile, readFile, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
-import { once } from 'node:events';
+import { once, EventEmitter } from 'node:events';
 import * as live from '../scripts/live-processes.mjs';
 const { cleanEnv, SESSION_ENV_KEYS, exec, stopOwned } = live;
+
+test('Codex fixture waits for correlated completion and settled history, including early notifications', async () => {
+  const rpc = new EventEmitter();
+  let starts = 0,
+    reads = 0;
+  rpc.request = async (method) => {
+    if (method === 'turn/start') {
+      starts++;
+      rpc.emit('notification', {
+        method: 'turn/completed',
+        params: { threadId: 'other', turn: { id: 'target', status: 'failed' } },
+      });
+      rpc.emit('notification', {
+        method: 'turn/completed',
+        params: { threadId: 'owned', turn: { id: 'old', status: 'failed' } },
+      });
+      rpc.emit('notification', {
+        method: 'turn/completed',
+        params: { threadId: 'owned', turn: { id: 'target', status: 'completed' } },
+      });
+      return { turn: { id: 'target' } };
+    }
+    assert.equal(method, 'thread/read');
+    return {
+      thread: {
+        turns: [
+          {
+            id: 'target',
+            status: ++reads === 1 ? 'interrupted' : 'completed',
+            items: reads === 1 ? [] : [{ type: 'mcpToolCall' }],
+          },
+        ],
+      },
+    };
+  };
+  const result = await live.codexModelTurn(rpc, 'owned', 'Read tools');
+  assert.equal(result.status, 'completed');
+  assert.equal(result.items.length, 1);
+  assert.equal(starts, 1);
+  assert.equal(rpc.listenerCount('notification'), 0);
+});
+
+test('Codex fixture rejects real interruption and missing completion without resubmission or listener leaks', async () => {
+  for (const status of ['interrupted', 'missing']) {
+    const rpc = new EventEmitter();
+    let starts = 0;
+    rpc.request = async (method) => {
+      assert.equal(method, 'turn/start');
+      starts++;
+      if (status !== 'missing')
+        rpc.emit('notification', {
+          method: 'turn/completed',
+          params: { threadId: 'owned', turn: { id: 'target', status } },
+        });
+      return { turn: { id: 'target' } };
+    };
+    await assert.rejects(
+      live.codexModelTurn(rpc, 'owned', 'Read tools', 10),
+      /interrupted|completion event/,
+    );
+    assert.equal(starts, 1);
+    assert.equal(rpc.listenerCount('notification'), 0);
+  }
+});
 
 async function wrapperArgs(t, args) {
   const dir = await mkdtemp(join(tmpdir(), 'ah-wrapper-'));

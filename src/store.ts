@@ -71,7 +71,9 @@ function validate(value: unknown): StoredReceipt {
       (!input.replyTo ||
         receipt.status !== 'replied' ||
         !receipt.reply ||
-        typeof receipt.forwardedMessageId !== 'string'))
+        typeof receipt.forwardedMessageId !== 'string')) ||
+    (input.messageKind === 'result' &&
+      (receipt.status === 'replied' || receipt.reply !== undefined))
   )
     throw new HubError('corrupt_store', 'Invalid persisted receipt; refusing recovery', 500);
   if (receipt.forwardedMessageId !== undefined) uuid(receipt.forwardedMessageId);
@@ -148,7 +150,7 @@ export async function openReceiptStore(filename: string): Promise<ReceiptStore> 
     }
     db = new DatabaseSync(path);
     const version = Number(db.prepare('PRAGMA user_version').get()!.user_version);
-    if (version !== 0 && version !== 1 && version !== 2)
+    if (version !== 0 && version !== 1 && version !== 2 && version !== 3)
       throw new HubError('store_version', 'Unsupported state schema version', 409);
     if (
       version === 0 &&
@@ -160,7 +162,7 @@ export async function openReceiptStore(filename: string): Promise<ReceiptStore> 
       CREATE TABLE IF NOT EXISTS receipts (id TEXT PRIMARY KEY, value TEXT NOT NULL) STRICT;
       CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL) STRICT;
       CREATE TABLE IF NOT EXISTS events (sequence INTEGER PRIMARY KEY, value TEXT NOT NULL) STRICT;
-      PRAGMA user_version=2; COMMIT;`);
+      PRAGMA user_version=3; COMMIT;`);
     return new SqliteReceiptStore(db, lock);
   } catch (error) {
     db?.close();

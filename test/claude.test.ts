@@ -80,6 +80,40 @@ async function fixture(t: test.TestContext, policy = 'accept', version = '2.1.31
   };
   return { dir, id, inbox, frames, adapter, hub, input };
 }
+test('Claude results retain delivery evidence but omit reply templates and ignore business replies', async (t) => {
+  const { hub, input, frames, adapter, inbox } = await fixture(t, 'hold');
+  const sent = { ...input, messageKind: 'result' as const, inReplyTo: randomUUID() };
+  const held = new Promise<void>((resolve) => adapter.once('update', () => resolve()));
+  await hub.send(sent);
+  await held;
+  assert.equal(hub.receipt(sent.messageId).status, 'held');
+  const content = String((frames[0]!.message as Json).content);
+  const payload = JSON.parse(content.slice(content.indexOf('\n') + 1, content.lastIndexOf('\n')));
+  assert.equal(payload.message.messageKind, 'result');
+  assert.equal(payload.reply, undefined);
+  assert.match(payload.guidance, /no reply/i);
+  for (const restore of [false, true]) {
+    if (restore)
+      await adapter.restore(
+        [{ ...sent, hopCount: 1, expiresAt: new Date(Date.now() + 10000).toISOString() }],
+        {
+          get: (key) => (key === `outgoing:${sent.messageId}` ? { inbox } : undefined),
+          set() {},
+        },
+      );
+    await push(String(frames[0]!.from).slice(4), {
+      msgV: 1,
+      type: 'user',
+      from: `uds:${inbox}`,
+      message: {
+        content: `<cross-session-message>\n${JSON.stringify({ inReplyTo: sent.messageId, text: 'thanks' })}\n</cross-session-message>`,
+      },
+    });
+    // The receiving socket has processed its end event before push resolves.
+    assert.equal(hub.receipt(sent.messageId).status, 'held');
+    assert.equal(hub.receipt(sent.messageId).reply, undefined);
+  }
+});
 test('Claude sends native peer framing and receives a correlated reverse-socket reply', async (t) => {
   const { hub, input, frames, dir, inbox, adapter } = await fixture(t);
   await hub.send(input);

@@ -23,6 +23,39 @@ const message = () => ({
   origin: { name: 'test' },
   text: 'hello',
 });
+test('Codex results omit reply instructions and reject forced replies before and after recovery', async (t) => {
+  for (const recovered of [false, true]) {
+    const { rpc, hub, adapter } = fixture();
+    t.after(() => hub.close());
+    const input = { ...message(), messageKind: 'result' as const, inReplyTo: randomUUID() };
+    const updates: unknown[] = [];
+    adapter.on('update', (u) => updates.push(u));
+    if (recovered) {
+      await hub.ready();
+      await adapter.restore([
+        { ...input, hopCount: 1, expiresAt: new Date(Date.now() + 10000).toISOString() },
+      ]);
+    } else {
+      await hub.send(input);
+      const call = rpc.calls.find((x) => x.method === 'turn/start')!;
+      const payload = JSON.parse(String((call.params.toolOutput as { output: string }).output));
+      assert.equal(payload.message.messageKind, 'result');
+      assert.equal(payload.reply, undefined);
+      assert.match(payload.guidance, /no reply/i);
+    }
+    rpc.emit('request', {
+      id: 'result-reply',
+      method: 'item/tool/call',
+      params: {
+        threadId: id,
+        tool: 'agenthub_reply',
+        arguments: { inReplyTo: input.messageId, text: 'thanks' },
+      },
+    });
+    assert.equal(updates.length, 0);
+    assert.equal((rpc.responses[0] as { error?: unknown })?.error !== undefined, true);
+  }
+});
 test('Codex external messages use tool output with empty input; reads and sends do not resume', async (t) => {
   const { rpc, hub } = fixture();
   t.after(() => hub.close());

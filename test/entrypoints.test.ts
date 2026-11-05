@@ -192,6 +192,28 @@ test('official MCP client calls all seven tools over a real stdio child and HTTP
     origin: { name: 'spoof' },
   });
   assert.equal(adapter.calls[0]?.origin.name, 'stdio-test');
+  await call('send_message', {
+    messageId: randomUUID(),
+    to: testAddress,
+    delivery: 'peer_message',
+    messageKind: 'result',
+    inReplyTo: id,
+    text: 'returned result',
+  });
+  assert.equal(adapter.calls[1]?.messageKind, 'result');
+  const badResult = await client.callTool({
+    name: 'send_message',
+    arguments: {
+      messageId: randomUUID(),
+      to: testAddress,
+      delivery: 'peer_message',
+      messageKind: 'result',
+      replyTo: testAddress,
+      text: 'invalid reply loop',
+    },
+  });
+  assert.equal(badResult.isError, true);
+  assert.equal(adapter.calls.length, 2);
   adapter.emit('update', { messageId: id, status: 'replied', reply: { text: 'stdio answer' } });
   assert.equal(
     (await call('get_message_status', { messageId: id, waitMs: 100 })).status,
@@ -207,7 +229,7 @@ test('official MCP client calls all seven tools over a real stdio child and HTTP
     arguments: { messageId: randomUUID(), to: testAddress, delivery: 'user_input', text: 'wrong' },
   });
   assert.equal(invalid.isError, true);
-  assert.equal(adapter.calls.length, 1);
+  assert.equal(adapter.calls.length, 2);
   assert.equal(hub.receipt(id).reply?.text, 'stdio answer');
   await client.close();
 });

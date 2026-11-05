@@ -23,6 +23,7 @@ import type {
   PageQuery,
   Receipt,
   SessionAddress,
+  SessionInfo,
   Update,
 } from './types.js';
 
@@ -50,6 +51,7 @@ export class AgentHub {
   private closed = false;
   private readonly initialization: Promise<void>;
   private storageFailure?: Error;
+  private readonly featureMetadata = new Map<string, Json>();
   constructor(
     adapters: Adapter[],
     private readonly options: {
@@ -166,6 +168,61 @@ export class AgentHub {
     await this.initialization;
     this.healthy();
   }
+  /** Trusted in-process extension state, never exposed through the public API. */
+  featureState(namespace: string): AdapterState {
+    const prefix = `feature:${text(namespace, 'namespace', 64)}:`;
+    return {
+      get: (key) => {
+        this.healthy();
+        return structuredClone(
+          this.options.store?.getMeta(prefix + key) ?? this.featureMetadata.get(prefix + key),
+        );
+      },
+      set: (key, value) =>
+        this.storeAction(() => {
+          if (this.options.store) this.options.store.setMeta(prefix + key, value);
+          else this.featureMetadata.set(prefix + key, structuredClone(value));
+        }),
+    };
+  }
+  /** Only a verified connector may supply responder. No receipt/history access is implied. */
+  async replyToMessage(id: string, responder: SessionAddress, body: string, callerId: string) {
+    await this.ready();
+    text(body, 'message');
+    this.prune();
+    const entry = this.entries.get(id);
+    if (
+      !entry ||
+      entry.envelope.messageKind !== 'request' ||
+      addressKey(entry.envelope.to) !== addressKey(responder)
+    )
+      throw new HubError('request_not_found', 'No request for this source', 404);
+    this.access.require(callerId, 'send', responder, responder.sessionId);
+    if (entry.envelope.replyTo)
+      this.access.require(
+        callerId,
+        'send',
+        entry.envelope.replyTo,
+        entry.envelope.replyTo.sessionId,
+      );
+    if (entry.receipt.status === 'replied') {
+      if (entry.receipt.reply?.text !== body)
+        throw new HubError('reply_conflict', 'A different reply is already recorded', 409);
+      return { request: id, accepted: true, duplicate: true };
+    }
+    if (Date.parse(entry.envelope.expiresAt) <= Date.now())
+      throw new HubError(
+        'request_expired',
+        'Request expired; reply was not accepted or forwarded',
+        409,
+      );
+    this.apply(this.adapter(responder), {
+      messageId: id,
+      status: 'replied',
+      reply: { text: body },
+    });
+    return { request: id, accepted: true, duplicate: false };
+  }
   private healthy(): void {
     if (this.storageFailure)
       throw new HubError('storage_unavailable', this.storageFailure.message, 503);
@@ -205,11 +262,42 @@ export class AgentHub {
     query: PageQuery = {},
     callerId = OWNER,
   ) {
+    return this.listSessionPage(a, query, callerId, false);
+  }
+  /** Connector discovery uses live adapter inventory, retaining the same read grants. */
+  async listPeerSessions(
+    a: Pick<SessionAddress, 'harness' | 'instance'>,
+    query: PageQuery = {},
+    callerId = OWNER,
+  ) {
+    return this.listSessionPage(a, query, callerId, true);
+  }
+  private async listSessionPage(
+    a: Pick<SessionAddress, 'harness' | 'instance'>,
+    query: PageQuery,
+    callerId: string,
+    peers: boolean,
+  ) {
     await this.ready();
     const ids = this.access.sessions(callerId, 'read', a),
       q = pageQuery(query);
-    if (ids === null) return this.adapter(a).listSessions(q);
-    const binding = fingerprint([callerId, a, ids, q.search ?? '']);
+    const available = (row: SessionInfo) =>
+      !peers ||
+      (row.status !== 'notLoaded' &&
+        row.capabilities.send.some((delivery) => delivery !== 'user_input'));
+    const matches = (row: SessionInfo) =>
+      !q.search ||
+      `${row.name ?? ''}\n${row.cwd ?? ''}\n${row.address.sessionId}`
+        .toLocaleLowerCase()
+        .includes(q.search.toLocaleLowerCase());
+    if (ids === null) {
+      const adapter = this.adapter(a);
+      const page = await (peers && adapter.listPeerSessions
+        ? adapter.listPeerSessions(q)
+        : adapter.listSessions(q));
+      return peers ? { ...page, data: page.data.filter(available).filter(matches) } : page;
+    }
+    const binding = fingerprint([callerId, a, ids, q.search ?? '', ...(peers ? ['peers'] : [])]);
     let offset = 0;
     if (q.cursor) {
       let c: Json;
@@ -240,13 +328,8 @@ export class AgentHub {
     );
     const data = rows
       .filter((r) => r !== undefined)
-      .filter(
-        (r) =>
-          !q.search ||
-          `${r.name ?? ''}\n${r.cwd ?? ''}\n${r.address.sessionId}`
-            .toLocaleLowerCase()
-            .includes(q.search.toLocaleLowerCase()),
-      );
+      .filter(available)
+      .filter(matches);
     const next = offset + selected.length;
     return {
       data,
@@ -455,6 +538,9 @@ export class AgentHub {
     )
       return;
     if (entry.receipt.status === 'replied') return;
+    // Result messages can accumulate transport evidence, never another business reply.
+    if (entry.envelope.messageKind === 'result' && (update.status === 'replied' || update.reply))
+      return;
     if (update.status !== 'unknown' && rank[update.status] < rank[entry.receipt.status]) return;
     if (
       update.status === 'unknown' &&
@@ -496,6 +582,7 @@ export class AgentHub {
       const result = await this.sendInput(
         {
           messageId,
+          messageKind: 'result',
           to,
           delivery,
           text: body,

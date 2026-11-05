@@ -34,3 +34,11 @@ export { EventLog, type HubEvent } from './events.js';
 export { AcpAdapter, type AcpOptions } from './adapters/acp.js';
 
 export { ClaudePipeAdapter, type ClaudePipeOptions } from './adapters/claude-pipe.js';
+export { ConnectorService } from './connectors/service.js';
+export { ConnectorClient } from './connectors/client.js';
+export type {
+  ConnectorBinding,
+  ConnectorProfile,
+  ConnectorEvidence,
+  ConnectorConnectionResult,
+} from './connectors/types.js';

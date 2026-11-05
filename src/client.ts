@@ -9,6 +9,11 @@ import type {
   SessionInfo,
 } from './types.js';
 import { diagnose, type DoctorOptions } from './doctor.js';
+import type {
+  ConnectorEvidence,
+  ConnectorBinding,
+  ConnectorConnectionResult,
+} from './connectors/types.js';
 export type { DoctorOptions, DoctorReport, DiagnosticCheck } from './doctor.js';
 export class HubApiError extends Error {
   constructor(
@@ -79,6 +84,42 @@ export class AgentHubClient {
     return this.request<{ data: { harness: string; instance: string }[]; eventCursor: string }>(
       'GET',
       '/v1/instances',
+    );
+  }
+  enrollConnector(evidence: ConnectorEvidence) {
+    return this.request<{ token: string; binding: ConnectorBinding; expiresAt?: string }>(
+      'POST',
+      '/v1/connector/enroll',
+      {},
+      evidence,
+    );
+  }
+  connectorHook(event: { pid: number; event: 'SessionStart' | 'SessionEnd'; sessionId: string }) {
+    return this.request<{ accepted: boolean; stale: boolean }>(
+      'POST',
+      '/v1/connector/hook',
+      {},
+      event,
+    );
+  }
+  connectorCall(evidence: ConnectorEvidence, operation: unknown) {
+    return this.request<unknown>('POST', '/v1/connector/call', {}, { evidence, operation });
+  }
+  connectSession(
+    address: SessionAddress,
+    options: { clientProfilePath?: string; waitMs?: number; retryActivation?: boolean } = {},
+  ) {
+    return this.request<ConnectorConnectionResult>(
+      'POST',
+      '/v1/connect',
+      {},
+      { address, ...options },
+    );
+  }
+  connections() {
+    return this.request<{ bindings: ConnectorBinding[]; liveness: string }>(
+      'GET',
+      '/v1/connections',
     );
   }
   doctor(options: DoctorOptions = {}) {

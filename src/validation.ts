@@ -56,6 +56,12 @@ export function pageQuery(value: unknown = {}): PageQuery {
 export function messageInput(value: unknown): MessageInput {
   const v = object(value);
   const origin = object(v.origin);
+  if (v.messageKind !== undefined && v.messageKind !== 'request' && v.messageKind !== 'result')
+    throw new HubError('invalid_input', 'messageKind must be request or result');
+  if (v.messageKind === 'result' && v.replyTo !== undefined)
+    throw new HubError('invalid_input', 'A result cannot set replyTo');
+  if (v.messageKind !== undefined && v.delivery === 'user_input')
+    throw new HubError('invalid_input', 'messageKind applies only to external messages');
   if (v.delivery !== 'tool_output' && v.delivery !== 'peer_message' && v.delivery !== 'user_input')
     throw new HubError(
       'unsupported_delivery',
@@ -69,6 +75,7 @@ export function messageInput(value: unknown): MessageInput {
     throw new HubError('invalid_input', 'Invalid expiresAt');
   return {
     messageId: uuid(v.messageId),
+    ...(v.messageKind !== undefined ? { messageKind: v.messageKind } : {}),
     to: address(v.to),
     origin: {
       name: text(origin.name, 'origin.name', 128),

@@ -49,6 +49,8 @@ export interface HistoryEntry {
 }
 export interface MessageInput {
   messageId: string;
+  /** Omitted retains legacy request behavior. Results never request a business reply. */
+  messageKind?: 'request' | 'result';
   to: SessionAddress;
   origin: { name: string; session?: SessionAddress };
   delivery: Delivery;
@@ -101,7 +103,20 @@ export interface Adapter extends EventEmitter {
   readonly harness: string;
   readonly instance: string;
   listSessions(query?: PageQuery): Promise<Page<SessionInfo>>;
+  /** Optional live discovery for collaboration, separate from the historical session list. */
+  listPeerSessions?(query?: PageQuery): Promise<Page<SessionInfo>>;
   getSession(address: SessionAddress): Promise<SessionInfo>;
+  probeConnector?(address: SessionAddress, serverName: string): Promise<void>;
+  connectorSession?(
+    address: SessionAddress,
+    serverName: string,
+    connectionId?: string,
+  ): Promise<SessionInfo>;
+  installConnector?(
+    address: SessionAddress,
+    serverName: string,
+    config: Json,
+  ): Promise<{ changed: boolean; activationScope: 'instance'; reloaded: boolean }>;
   history(address: SessionAddress, query?: PageQuery): Promise<Page<HistoryEntry>>;
   send(message: Envelope): Promise<Submission>;
   restore?(messages: Envelope[], state?: AdapterState): Promise<void>;

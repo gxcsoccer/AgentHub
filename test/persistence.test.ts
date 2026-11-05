@@ -114,6 +114,7 @@ test('a saved reply route resumes an unreserved forward once, preserving its mes
   await new Promise((r) => setImmediate(r));
   assert.equal(b.calls.length, 1);
   assert.equal(b.calls[0]?.messageId, row.receipt.forwardedMessageId);
+  assert.equal(b.calls[0]?.messageKind, 'result');
   await recovered.close();
   const c = new TestAdapter(),
     again = new AgentHub([c], { store: await openReceiptStore(path) });
