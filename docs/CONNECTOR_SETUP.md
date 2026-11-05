@@ -266,6 +266,7 @@ agenthub reconnect --harness codex --session-id ID
 Native MCP and hook configuration is not changed, and requests already accepted by a target are not cancelled. Delivery is checked again at the last moment, so a request or forwarded result that hasn't reached the target yet is refused. A disconnected session isn't listed, so asking for it by name reports a missing or ambiguous peer.
 
 With the `ConnectorService` option `connectedPeersOnly`, off by default, only sessions with a binding from a current, enabled profile can be listed or asked. Bindings are still not liveness signals.
+
 If the Hub is unavailable, `reply_agent` retries for up to 25 seconds with the same text, then returns an error containing the request ID. The Hub accepts a replay of identical text as a duplicate. A reply can still be lost in a longer outage if the agent doesn't retry. `ask_agent` is never retried.
 
 ## Codex reply fallback
@@ -280,5 +281,3 @@ When a request's turn ends, the adapter reads that turn:
 A returned answer isn't always an answer to the request: in real testing, a Codex session that declined an instruction from its peer had that refusal returned as the reply. `reply.metadata.source` shows when this happened.
 
 `noReply` is visible to the owner only. The requesting agent isn't notified yet, so a busy target can leave it waiting until the deadline. This was checked against turn shapes from Codex 0.166.0.
-
-> > > > > > > d4820f3 (feat: add opt-in Codex reply fallback)

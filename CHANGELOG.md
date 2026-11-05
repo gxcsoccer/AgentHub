@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 — 2026-11-06
 
 - Skip the user config write when a matching Codex MCP entry is already effective through an override layer. Conflicting overrides are still refused.
 - Add `ClaudeAdapter` `supportsNativeVersion` for embedders with their own version policy. Sessions report the installed version and `nativeVersionSupported`, and `doctor` follows that result. The default remains the validated version list.
@@ -9,9 +9,12 @@
 - Reclaim stale bindings and lifecycle records at capacity instead of refusing with 429. Connector state moves to version 4, so roll back only from a state backup.
 - Add owner-only `listMessages` (library, `GET /v1/messages`) with an incremental cursor, request and reply text, and a `gap` flag when retained changes were removed.
 - Add owner-only `clearMessages` (library, `DELETE /v1/messages`). It removes finished messages and retained events atomically, keeps requests still waiting for a reply or forward, and reports both counts. Connector bindings and credentials are unaffected.
-- # Retry `reply_agent` for up to 25 seconds after a network failure or 5xx response, using the same text. The Hub treats a replay as a duplicate. `ask_agent` is still never retried. A longer outage returns an error with the request ID, so the reply can still be lost if it isn't retried.
+- Retry `reply_agent` for up to 25 seconds after a network failure or 5xx response, using the same text. The Hub treats a replay as a duplicate. `ask_agent` is still never retried. A longer outage returns an error with the request ID, so the reply can still be lost if it isn't retried.
 - Add `CodexAdapter` option `replyFallback`, off by default. When a request's turn ends without `reply_agent`, its final answer becomes the reply only if that request was the turn's sole input. The reply is labeled with its source. Otherwise the receipt gets `noReply` with a reason, and no text is sent.
-  > > > > > > > d4820f3 (feat: add opt-in Codex reply fallback)
+
+Stop the Hub and back up its state before upgrading, and upgrade connector processes with the Hub. Connector state moves to version 4, and older builds refuse it, so rolling back needs that backup. Stored messages from 0.3.0 gain a change sequence on first start. `replyFallback` and `connectedPeersOnly` are off by default. Sessions under fully disconnected profiles are no longer offered as peers.
+
+本版新增所有者断开与恢复、消息列表与清空、连接器记录回收、`reply_agent` 短时重试，以及可选的 Codex 回复兜底。升级前请停止 Hub 并备份状态，连接器进程需与 Hub 同步升级。连接器状态升至版本 4，旧版本无法读取，回滚需要该备份。普通 Codex TUI 执行对端任务并不稳定，详见 `docs/ROADMAP`。
 
 ## 0.3.0 — 2026-11-05
 

@@ -2,7 +2,7 @@
 
 [简体中文](ROADMAP.zh-CN.md)
 
-The `@gxcsoccer/agenthub@0.3.0` release includes PRs #1–#3, with matching [GitHub release assets](https://github.com/gxcsoccer/AgentHub/releases/tag/v0.3.0). See the [changelog](../CHANGELOG.md) for upgrade requirements and retained capability boundaries.
+The `@gxcsoccer/agenthub@0.4.0` release includes PRs #1–#3 and #9, with matching [GitHub release assets](https://github.com/gxcsoccer/AgentHub/releases/tag/v0.4.0). See the [changelog](../CHANGELOG.md) for upgrade requirements and retained capability boundaries.
 
 | Work group                    | Implementation and evidence                                                                                                                                         | Boundary                                                                                     |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
@@ -39,7 +39,7 @@ Codex connect and the shared tools passed six further live checks: existing-root
 
 Claude CLI connect passes ten live checks, with seven additional Claude CLI/Codex MCP checks. A host without Bash remains unverified despite receiving and replying to activation; only an actual CLI call in the target process chain completes it. This path uses the model and existing host permissions without installing MCP. The Doubao setup workflow now provides profile generation, managed Hub removal/disable and read-only diagnostics, plus explicit host registration/removal. General native MCP removal and broader fault/capacity acceptance remain.
 
-## After 0.4.0: busy-target feedback
+## Next: requester feedback
 
 The requesting agent isn't told when a target ends its turn without replying, and connector tools can't query status. Planned, not implemented: `ask_agent` returns a racy `targetBusy` hint, and the Hub sends one `result` notice through the forward path when a turn ends without a reply. The notice requests no reply, so it can't loop, but it does cost the requester a model turn. A later real reply must still get through.
 

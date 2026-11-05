@@ -1,5 +1,13 @@
 # Verification
 
+## 0.4.0 release checks (2026-11-06)
+
+PR #9 is merged. With the package and OpenAPI version set to 0.4.0, `npm run check` passes **274 tests** (205 core, 41 retained bridge, 28 script checks); coverage is **96.88% lines / 88.53% branches / 94.72% functions**. `npm run test:package` passes fresh installation, five exports, both binaries, HTTP/SQLite and the installed setup CLI.
+
+Real runs used isolated homes with Codex 0.166.0 TUI and Claude 2.1.318. The last code change, `60e0ff3`, passed: session and profile disconnect and reconnect, enrollment of a new session during a session disconnect, solo-turn fallback, merged-turn `noReply` without leaking user work, and forwarded results after a Hub SIGKILL (2 of 2, Claude to Claude). `4700953` passed a reply retried through an 11.8-second outage with one model call, and `gap: true`. A real `reply_agent` call succeeded in a plain TUI.
+
+Not verified: `reply_call_failed`, whether `turn/completed` reaches this connection (polling covers it), Codex as requester across a Hub restart, and `fileChange`, `webSearch` and `plan` items in a fallback turn. The 25-second retry window is an estimate. Plain TUI task handling was inconsistent, as recorded in the [roadmap](ROADMAP.md). Early refusal runs were contaminated by a test prompt that said `Use no tools`. No working sessions were contacted.
+
 ## 0.3.0 release checks (2026-11-05)
 
 PR #3 is merged. With the package and OpenAPI version set to 0.3.0, `npm run check` passes **250 tests** (181 core, 41 retained bridge, 28 script checks); coverage is **96.66% lines / 88.11% branches / 94.52% functions**. CLI, MCP and connector version metadata follow the package manifest. The release adds unified setup and experimental Doubao host registration without changing the core SQLite schema from 0.2.0.
