@@ -18,6 +18,7 @@ import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { once } from 'node:events';
 import { createServer } from 'node:net';
+import { createServer as createHttpServer } from 'node:http';
 import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import {
@@ -253,4 +254,79 @@ test('setup refuses symlinked credentials and parent paths and reports offline d
     setupDoubao({ directory: join(parentLink, 'child'), targets: [target] }),
     /canonical/,
   );
+});
+
+test('initialization and manifest loading share UUID validation before writing credentials', async (t) => {
+  const directory = await folder(t);
+  await assert.rejects(
+    setupDoubao({
+      directory,
+      targets: [{ ...target, sessionId: '11111111-1111-1111-1111-111111111111' }],
+    }),
+    /UUID/,
+  );
+  await assert.rejects(stat(directory), { code: 'ENOENT' });
+  await setupDoubao({
+    directory,
+    targets: [
+      target,
+      { ...target, harness: 'codex', sessionId: '018f6f84-7c29-7d68-9d82-641471570d3c' },
+    ],
+  });
+  assert.equal((await loadSetup(directory)).targets.length, 2);
+});
+
+for (const response of ['unauthorized', 'html', 'other-json'] as const) {
+  test(`unrelated ${response} service on the configured port does not block disable or uninstall`, async (t) => {
+    const directory = await folder(t);
+    const server = createHttpServer((_req, res) => {
+      if (response === 'unauthorized') {
+        res.writeHead(401, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ error: { code: 'unauthorized', message: 'other Hub' } }));
+      } else if (response === 'html') res.end('<html>other service</html>');
+      else {
+        res.setHeader('content-type', 'application/json');
+        res.end(JSON.stringify({ status: 'ok' }));
+      }
+    });
+    server.listen(0, '127.0.0.1');
+    await once(server, 'listening');
+    t.after(async () => {
+      server.closeAllConnections();
+      await new Promise<void>((r) => server.close(() => r()));
+    });
+    await setupDoubao({
+      directory,
+      targets: [target],
+      port: (server.address() as { port: number }).port,
+    });
+    await setSetupEnabled(directory, false);
+    assert.equal((await loadSetup(directory)).enabled, false);
+    assert.equal((await uninstallSetup(directory)).uninstalled, true);
+    assert.equal(server.listening, true);
+  });
+}
+
+test('an unresponsive port has unknown ownership and preserves credentials for explicit operator recovery', async (t) => {
+  const directory = await folder(t);
+  const server = createHttpServer(() => {});
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(async () => {
+    server.closeAllConnections();
+    await new Promise<void>((r) => server.close(() => r()));
+  });
+  await setupDoubao({
+    directory,
+    targets: [target],
+    port: (server.address() as { port: number }).port,
+  });
+  const owner = await readFile(join(directory, 'owner.token'), 'utf8');
+  await assert.rejects(setSetupEnabled(directory, false), { code: 'setup_hub_unknown' });
+  await assert.rejects(uninstallSetup(directory), { code: 'setup_hub_unknown' });
+  assert.equal((await loadSetup(directory)).uninstalled, false);
+  assert.equal(await readFile(join(directory, 'owner.token'), 'utf8'), owner);
+  server.closeAllConnections();
+  await new Promise<void>((r) => server.close(() => r()));
+  assert.equal((await uninstallSetup(directory)).uninstalled, true);
 });

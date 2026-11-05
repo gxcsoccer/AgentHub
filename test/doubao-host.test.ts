@@ -8,6 +8,9 @@ import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { runInNewContext } from 'node:vm';
 import { WebSocketServer } from 'ws';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { HubError } from '../src/validation.js';
 import { configureDoubaoHost, setupDoubao, loadSetup, uninstallSetup } from '../src/setup.js';
 import {
   openDoubaoHost,
@@ -15,6 +18,8 @@ import {
   type DoubaoConnector,
   type DoubaoHostApi,
 } from '../src/doubao-host.js';
+const exec = promisify(execFile);
+const cli = new URL('../src/cli.js', import.meta.url).pathname;
 class Host implements DoubaoHostApi {
   entries: DoubaoConnector[] = [];
   creates = 0;
@@ -23,14 +28,21 @@ class Host implements DoubaoHostApi {
   lostCreate = false;
   loseBeforeCreate = false;
   pretendRemove = false;
+  listError: Error | undefined;
+  createError: Error | undefined;
+  connectError: Error | undefined;
   async list() {
+    if (this.listError) throw this.listError;
     return structuredClone(this.entries);
   }
   async detail(id: string) {
-    return structuredClone(this.entries.find((e) => e.connector_id === id)!);
+    const entry = this.entries.find((e) => e.connector_id === id);
+    if (!entry) throw new HubError('host_api_rejected', 'Missing connector');
+    return structuredClone(entry);
   }
   async create(name: string, command: string) {
     this.creates++;
+    if (this.createError) throw this.createError;
     if (this.loseBeforeCreate) throw Error('lost request');
     const entry = {
       connector_id: String(this.creates),
@@ -44,6 +56,7 @@ class Host implements DoubaoHostApi {
   }
   async connect() {
     this.connects++;
+    if (this.connectError) throw this.connectError;
   }
   async enabled(id: string, enabled: boolean) {
     this.entries.find((e) => e.connector_id === id)!.enabled = enabled;
@@ -58,8 +71,14 @@ async function fixture(t: test.TestContext) {
   const root = await realpath(await mkdtemp(join(tmpdir(), 'ah-host-')));
   t.after(() => rm(root, { recursive: true, force: true }));
   const directory = join(root, 'setup');
+  const listener = createServer();
+  listener.listen(0, '127.0.0.1');
+  await once(listener, 'listening');
+  const port = (listener.address() as { port: number }).port;
+  await new Promise<void>((r) => listener.close(() => r()));
   await setupDoubao({
     directory,
+    port,
     targets: [{ harness: 'claude', instance: 'local', sessionId: randomUUID() }],
   });
   const host = new Host();
@@ -118,6 +137,69 @@ test('user edits prevent host mutation; success flags alone do not remove state'
   host.pretendRemove = false;
   await run('remove');
 });
+test('unattempted host registration can be removed offline or directly uninstalled', async (t) => {
+  for (const action of ['remove', 'uninstall'] as const) {
+    const { directory, host, run } = await fixture(t);
+    host.listError = new HubError('unsupported_host_context', 'Unsupported version');
+    await assert.rejects(run('install'), { code: 'unsupported_host_context' });
+    assert.equal((await loadSetup(directory)).doubaoHost?.attempted, false);
+    if (action === 'remove') {
+      const removed = await configureDoubaoHost(directory, 'remove', 9224, async () => {
+        throw Error('Must not connect to offline Doubao');
+      });
+      assert.equal(removed.phase, 'removed');
+    }
+    assert.equal((await uninstallSetup(directory)).uninstalled, true);
+    assert.equal((await loadSetup(directory)).doubaoHost?.phase, 'removed');
+    assert.equal(host.creates, 0);
+  }
+});
+for (const scenario of [
+  'rejected-create',
+  'lost-create-response',
+  'deleted-after-connect-failure',
+  'upgraded-host',
+] as const) {
+  test(`explicit offline forget unlocks uninstall for ${scenario} while retaining an accurate recovery record`, async (t) => {
+    const { directory, host, run } = await fixture(t);
+    if (scenario === 'rejected-create')
+      host.createError = new HubError('host_api_rejected', 'Rejected create');
+    else if (scenario === 'lost-create-response') host.lostCreate = true;
+    else if (scenario === 'deleted-after-connect-failure')
+      host.connectError = new HubError('doubao_not_connected', 'Failed connect');
+    if (scenario === 'upgraded-host') await run('install');
+    else await assert.rejects(run('install'));
+    if (scenario === 'deleted-after-connect-failure') host.entries = [];
+    if (scenario === 'upgraded-host')
+      host.listError = new HubError('unsupported_host_context', 'Upgraded host');
+    if (scenario !== 'lost-create-response') await assert.rejects(run('remove'));
+    await assert.rejects(uninstallSetup(directory), { code: 'host_cleanup_required' });
+    const record = (await loadSetup(directory)).doubaoHost!;
+    const hostEntries = structuredClone(host.entries);
+    const forget = (...args: string[]) =>
+      exec(process.execPath, [cli, 'setup', 'host-forget', '--directory', directory, ...args]);
+    await assert.rejects(forget(), /confirm-host-name/);
+    await assert.rejects(
+      forget('--confirm-host-name', 'agenthub-' + randomUUID()),
+      /confirm-host-name/,
+    );
+    assert.deepEqual((await loadSetup(directory)).doubaoHost, record);
+    const forgotten = JSON.parse((await forget('--confirm-host-name', record.name)).stdout);
+    assert.equal(forgotten.phase, 'forgotten');
+    assert.equal(forgotten.remoteCleanupVerified, false);
+    assert.equal(forgotten.hostCleanupRequired, true);
+    assert.equal((await loadSetup(directory)).doubaoHost?.connectorId, record.connectorId);
+    assert.equal(
+      JSON.parse((await forget('--confirm-host-name', record.name)).stdout).changed,
+      false,
+    );
+    await assert.rejects(run('install'), { code: 'host_registration_forgotten' });
+    assert.deepEqual(host.entries, hostEntries);
+    assert.equal((await uninstallSetup(directory)).uninstalled, true);
+    assert.equal((await loadSetup(directory)).doubaoHost?.phase, 'forgotten');
+    assert.equal(host.creates, 1);
+  });
+}
 test('request expression reuses desktop metadata but never exports or copies authentication values', async () => {
   let called = 0;
   const environment = {

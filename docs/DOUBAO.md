@@ -38,7 +38,7 @@ For several, create `targets.json` and initialize once:
 agenthub setup init --targets /ABS/targets.json
 ```
 
-Keep only the targets you intend to authorize. The generator accepts explicit local Claude/Codex UUIDs, creates `$HOME/.agenthub/doubao` with mode 0700, and refuses to overwrite an existing directory. `--directory /ABS/NEW_DIRECTORY` and `--port 3214` customize paths and the port; a custom parent must already exist and be canonical. Credentials and configuration are 0600; the generated `agenthub-mcp` launcher is 0700.
+Keep only the targets you intend to authorize. The generator accepts explicit local Claude/Codex UUIDs, using the same validation as manifest loading before creating any files. It creates `$HOME/.agenthub/doubao` with mode 0700 and refuses to overwrite an existing directory. `--directory /ABS/NEW_DIRECTORY` and `--port 3214` customize paths and the port; a custom parent must already exist and be canonical. Credentials and configuration are 0600; the generated `agenthub-mcp` launcher is 0700.
 
 Files include separate owner/caller/enrollment tokens, target-specific read/send grants, Hub and connector profiles, a setup manifest, `mcp.json` and the launcher. Output contains paths and argument arrays, never token values. MCP uses absolute Node/CLI paths and caller credentials, clearing inherited `AGENTHUB_TOKEN`. Keep the checkout or installation at that path. For changed targets or installation paths, stop the old setup and generate a new directory; lifecycle commands reject manually edited generated files.
 
@@ -75,6 +75,15 @@ The CLI persists a unique registration name before creation, records the returne
 
 `installed` means registration and connection acceptance were checked. `hostLoadingVerified` and `deliveryTested` remain false until a separate actual tool/reply test. Host enable/disable changes the connector entry; `setup enable/disable` controls the Hub. These are explicit separate operations.
 
+If registration stopped before attempting creation, `host-remove` clears that pending record without connecting to Doubao; `setup uninstall` also handles it directly. If creation was attempted, a rejected or lost response cannot establish whether the entry exists. A deleted entry or an upgraded host can also prevent API cleanup. Use the offline recovery command with the exact name reported by the error, `setup doctor` (`hostRegistration`), or private `setup.json`:
+
+```sh
+agenthub setup host-forget --directory "$HOME/.agenthub/doubao" --confirm-host-name agenthub-EXACT_UUID
+agenthub setup uninstall --directory "$HOME/.agenthub/doubao"
+```
+
+`host-forget` needs no CDP connection. It records `forgotten`, retains the name/ID and reports `remoteCleanupVerified: false`; check that entry in Doubao and remove it manually. This acknowledgment permits local uninstall and prevents further automatic host operations for that setup. It does not stop a running Hub or revoke credentials itself; follow it with `setup uninstall`.
+
 ### Manual entry
 
 In Doubao Work 2.35.15 on macOS:
@@ -104,7 +113,9 @@ agenthub setup uninstall --directory "$HOME/.agenthub/doubao"
 
 Disable persists a disabled flag, waits for this setup's managed Hub to exit and refuses new launcher starts. In-flight work already accepted by a harness is not interrupted. Enable permits a later explicit start. SQLite process locks prevent two managed servers and release after a crash; no process is killed by a guessed PID. A legacy daemon started outside `setup serve` must be stopped separately before disabling or uninstalling.
 
-Uninstall removes only unchanged generated files, retaining private receipt state, lifecycle metadata and unrelated files. **Host entries are a separate cleanup step:** use `setup host-remove` for an API-managed Doubao entry before uninstalling (uninstall otherwise refuses), or remove a manually created entry through Doubao's UI. Remove the matching native MCP entry if `connect` installed one. The command reports `hostCleanupRequired: true`; it does not edit other host configuration. Interrupted uninstalls can be retried, with remaining files checked before deletion. Uninstalled setups cannot be re-enabled.
+An unrelated service returning 401/403/404/405, HTML or non-Hub JSON on the configured port does not block cleanup and is left running. A timeout, connection reset or server failure returns `setup_hub_unknown` and retains credentials: inspect or stop that service, then retry. A responsive Hub accepting this setup's credentials still blocks cleanup until stopped.
+
+Uninstall removes only unchanged generated files, retaining private receipt state, lifecycle metadata and unrelated files. **Host entries are a separate cleanup step:** use `setup host-remove` for an API-managed Doubao entry before uninstalling, or the explicit `host-forget` recovery above when remote cleanup cannot be verified. Creation that was never attempted needs neither step. Remove a manually created entry through Doubao's UI, and the matching native MCP entry if `connect` installed one. The command reports `hostCleanupRequired: true`; it does not edit other host configuration. Interrupted uninstalls can be retried, with remaining files checked before deletion. Uninstalled setups cannot be re-enabled.
 
 ## Optional CLI plugin
 

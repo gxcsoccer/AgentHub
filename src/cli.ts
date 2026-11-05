@@ -24,6 +24,7 @@ async function main() {
       port: { type: 'string' },
       directory: { type: 'string' },
       'doubao-cdp-port': { type: 'string' },
+      'confirm-host-name': { type: 'string' },
       targets: { type: 'string' },
       url: { type: 'string' },
       config: { type: 'string' },
@@ -90,6 +91,8 @@ async function main() {
   agenthub setup mcp --directory DIR (generated local host launcher)
   agenthub setup host-install|host-disable|host-enable|host-remove --directory DIR --doubao-cdp-port PORT
                    (experimental Doubao 2.35.15 API; requires an already enabled debug port)
+  agenthub setup host-forget --directory DIR --confirm-host-name NAME
+                   (offline recovery; host entry may remain and its record is retained)
 
 Clients: --url http://127.0.0.1:3211 --token-file FILE
 Environment: AGENTHUB_URL, AGENTHUB_TOKEN, AGENTHUB_TOKEN_FILE, AGENTHUB_STATE_FILE
@@ -137,6 +140,10 @@ No session is launched, resumed or interrupted implicitly.`);
         JSON.stringify(
           await setup.setupDoubao({ directory, targets, port: Number(values.port ?? 3214) }),
         ),
+      );
+    } else if (operation === 'host-forget') {
+      console.log(
+        JSON.stringify(await setup.forgetDoubaoHost(directory, values['confirm-host-name'])),
       );
     } else if (
       ['host-install', 'host-disable', 'host-enable', 'host-remove'].includes(operation ?? '')
@@ -189,7 +196,7 @@ No session is launched, resumed or interrupted implicitly.`);
       process.exitCode = results.some((r) => r.exitCode !== 0) ? 2 : 0;
     } else
       throw Error(
-        'Expected setup init, targets, serve, connect, doctor, disable, enable, uninstall or mcp',
+        'Expected setup init, targets, serve, connect, doctor, disable, enable, uninstall, mcp, host-install, host-disable, host-enable, host-remove or host-forget',
       );
     return;
   }

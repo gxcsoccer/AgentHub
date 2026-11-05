@@ -1,5 +1,11 @@
 # Verification
 
+## PR #3 recovery fixes (2026-11-05)
+
+`npm run check` passes **245 tests** (176 core, 41 retained bridge, 28 script checks); coverage is **96.30% lines / 87.58% branches / 94.12% functions**. All ten new regression tests failed before the fix and pass afterward. They cover UUID validation before file creation; cleanup with unrelated 401/HTML/non-Hub JSON services; explicit unknown ownership for a hung port with credential preservation; offline cleanup before creation; and exact-name `host-forget` after rejected creation, a lost response, manual entry deletion or a host upgrade.
+
+The host error cases use a fake API; port cases use local HTTP servers, and recovery exercises the compiled CLI in separate processes. These checks do not rerun the real Doubao/model acceptance below, which was completed at the earlier PR head `9c37af1`. No working sessions were contacted during the fixes. The package-installation check also passes with the updated CLI. Private logs remain under `.local/verification/pr3-fix-*`.
+
 ## Doubao host and unified setup (2026-11-05, development branch)
 
 `npm run check` passes **235 tests** (166 core, 41 retained bridge, 28 script checks). Coverage: **96.56% lines / 87.34% branches / 94.08% functions**. Package installation also checks the installed setup CLI. New process tests cover the generated MCP launcher, disable/restart, owned SIGKILL recovery, refusal to control a legacy daemon, private-file checks and preservation of edited/user files. Host API tests cover unique registration, lost-create recovery without duplication, uncertain-outcome retention and removal verification.

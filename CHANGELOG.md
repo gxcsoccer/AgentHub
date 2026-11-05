@@ -4,6 +4,7 @@
 
 - Add plugin-free local MCP setup with absolute launch paths, scoped caller credentials and inherited-owner-token removal. A local Doubao CLI plugin and allowlisted ZIP packaging remain optional; bilingual guides cover both paths.
 - Add unified setup target discovery, private generation, managed serve/connect/doctor/disable/enable/uninstall, plus explicit experimental Doubao 2.35.15 CDP registration, enable/disable and removal with ownership checks and uncertain-create recovery.
+- Recover failed host registration with offline cleanup before creation or an exact-name `host-forget` acknowledgment that retains uncertain host records. Allow cleanup with unrelated port services, distinguish unknown ownership, and share UUID validation between initialization and manifest loading.
 - Verify real Doubao STDIO requests and visible replies from isolated Claude/Codex sessions, and a separate five-check host API lifecycle. Busy host interleaving/disconnect remain unverified; native identity and proactive wake-up remain unimplemented. No store publication is performed.
 
 ## 0.2.0 — 2026-11-05

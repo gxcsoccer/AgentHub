@@ -14,6 +14,17 @@ import { AgentHubClient } from './client.js';
 import { HubError } from './validation.js';
 import { openDoubaoHost, type DoubaoHostApi, type DoubaoConnector } from './doubao-host.js';
 
+const setupTargetsSchema = z
+  .array(
+    z.strictObject({
+      harness: z.enum(['claude', 'codex']),
+      instance: z.literal('local'),
+      sessionId: z.string().uuid(),
+    }),
+  )
+  .min(1)
+  .max(100);
+
 // Generates a new, isolated Hub configuration. Never edits an existing daemon or host setup.
 export async function setupDoubao({
   directory,
@@ -32,19 +43,12 @@ export async function setupDoubao({
   if (!isAbsolute(cliPath) || !(await lstat(cliPath)).isFile())
     throw Error('Build AgentHub first; cliPath must name an absolute CLI file');
   const url = `http://127.0.0.1:${port}`;
-  if (!Array.isArray(targets) || !targets.length || targets.length > 100)
-    throw Error('Provide 1–100 explicit target addresses');
+  const parsedTargets = setupTargetsSchema.safeParse(targets);
+  if (!parsedTargets.success)
+    throw Error('Provide 1–100 explicit local Claude/Codex UUID addresses');
+  const checkedTargets = parsedTargets.data;
   const groups = new Map<string, Set<string>>();
-  for (const t of targets) {
-    if (
-      !t ||
-      Object.keys(t).sort().join(',') !== 'harness,instance,sessionId' ||
-      !['claude', 'codex'].includes(t.harness) ||
-      t.instance !== 'local' ||
-      typeof t.sessionId !== 'string' ||
-      !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(t.sessionId)
-    )
-      throw Error('Targets must be explicit local Claude/Codex UUID addresses');
+  for (const t of checkedTargets) {
     if (!groups.has(t.harness)) groups.set(t.harness, new Set());
     groups.get(t.harness)!.add(t.sessionId);
   }
@@ -171,7 +175,14 @@ export async function setupDoubao({
     await writeFile(
       join(dest, 'setup.json'),
       JSON.stringify(
-        { schemaVersion: 1, port, targets, enabled: true, uninstalled: false, files },
+        {
+          schemaVersion: 1,
+          port,
+          targets: checkedTargets,
+          enabled: true,
+          uninstalled: false,
+          files,
+        },
         null,
         2,
       ) + '\n',
@@ -181,7 +192,7 @@ export async function setupDoubao({
       directory: dest,
       launcherPath,
       managedStartArgv: [process.execPath, cliPath, 'setup', 'serve', '--directory', dest],
-      targets: targets.length,
+      targets: checkedTargets.length,
       grants: ['read', 'send'],
       started: false,
       nativeSessionIdentity: false,
@@ -226,16 +237,7 @@ const baseFiles = [
 const schema = z.strictObject({
   schemaVersion: z.literal(1),
   port: z.number().int().min(1).max(65535),
-  targets: z
-    .array(
-      z.strictObject({
-        harness: z.enum(['claude', 'codex']),
-        instance: z.literal('local'),
-        sessionId: z.string().uuid(),
-      }),
-    )
-    .min(1)
-    .max(100),
+  targets: setupTargetsSchema,
   enabled: z.boolean(),
   uninstalled: z.boolean(),
   files: z.record(z.string(), z.string().regex(/^[a-f0-9]{64}$/)),
@@ -244,10 +246,13 @@ const schema = z.strictObject({
       name: z.string().regex(/^agenthub-[a-f0-9-]{36}$/),
       attempted: z.boolean(),
       connectorId: z.string().regex(/^\d+$/).optional(),
-      phase: z.enum(['pending', 'installed', 'removed']),
+      phase: z.enum(['pending', 'installed', 'removed', 'forgotten']),
     })
     .optional(),
 });
+function creationUnattempted(host: NonNullable<z.infer<typeof schema>['doubaoHost']>) {
+  return host.phase === 'pending' && !host.attempted && !host.connectorId;
+}
 export async function loadSetup(directory: string, verify = true) {
   const dir = resolve(directory),
     stat = await lstat(dir);
@@ -319,15 +324,37 @@ async function runtimeStopped(directory: string) {
 async function ownHubReachable(directory: string, port: number) {
   const token = (await privateRead(join(directory, 'owner.token'))).trim();
   try {
-    await new AgentHubClient({
-      baseUrl: 'http://127.0.0.1:' + port,
-      token,
-      timeoutMs: 1000,
-    }).instances();
-    return true;
+    const response = await fetch(`http://127.0.0.1:${port}/v1/instances`, {
+      headers: { Authorization: `Bearer ${token}` },
+      redirect: 'error',
+      signal: AbortSignal.timeout(1000),
+    });
+    try {
+      // A different authenticated Hub or a service without this route is not ours.
+      if ([401, 403, 404, 405].includes(response.status)) return false;
+      if (!response.ok) throw Error('Hub identity probe failed');
+      return z
+        .object({
+          data: z.array(z.object({ harness: z.string(), instance: z.string() })),
+          eventCursor: z.string(),
+        })
+        .safeParse(await response.json()).success;
+    } finally {
+      await response.body?.cancel().catch(() => {});
+    }
   } catch (e) {
-    if (e instanceof TypeError) return false;
-    throw e;
+    if (e instanceof SyntaxError) return false;
+    if (
+      e instanceof TypeError &&
+      (e.cause as NodeJS.ErrnoException | undefined)?.code === 'ECONNREFUSED'
+    )
+      return false;
+    // A timeout, connection reset or server failure can still be our hung legacy Hub.
+    throw new HubError(
+      'setup_hub_unknown',
+      'Cannot determine whether the configured port belongs to this Hub. Inspect or stop that service, then retry; credentials were retained.',
+      409,
+    );
   }
 }
 async function disable(directory: string, data: z.infer<typeof schema>) {
@@ -374,10 +401,15 @@ export async function uninstallSetup(directory: string) {
   const release = await lock(directory, 'setup.control.lock');
   try {
     const data = await loadSetup(directory);
-    if (data.doubaoHost && data.doubaoHost.phase !== 'removed')
+    if (data.doubaoHost && creationUnattempted(data.doubaoHost)) {
+      data.doubaoHost.phase = 'removed';
+      await saveSetup(directory, data);
+    }
+    if (data.doubaoHost && !['removed', 'forgotten'].includes(data.doubaoHost.phase))
       throw new HubError(
         'host_cleanup_required',
-        'Run setup host-remove with the selected Doubao CDP port before uninstalling this setup',
+        'Run setup host-remove first, or explicitly acknowledge possible remaining host entries with setup host-forget --confirm-host-name ' +
+          data.doubaoHost.name,
       );
     if (!data.uninstalled) {
       await disable(directory, data);
@@ -426,6 +458,7 @@ export async function diagnoseSetup(directory: string) {
     deliveryTested: false,
     enabled: data.enabled,
     uninstalled: data.uninstalled,
+    hostRegistration: data.doubaoHost ?? null,
   };
   if (!data.enabled || data.uninstalled)
     return {
@@ -544,6 +577,40 @@ export async function setupMcp(directory: string) {
   );
 }
 
+// Local recovery only: keep the identity and uncertainty, rather than claiming remote removal.
+export async function forgetDoubaoHost(directory: string, confirmHostName?: string) {
+  directory = resolve(directory);
+  await loadSetup(directory);
+  const release = await lock(directory, 'setup.control.lock');
+  try {
+    const data = await loadSetup(directory);
+    const host = data.doubaoHost;
+    if (!host || host.phase === 'removed')
+      return { changed: false, phase: host?.phase ?? 'absent' };
+    if (confirmHostName !== host.name)
+      throw new HubError(
+        'host_confirmation_required',
+        'The connector may still exist in Doubao. To stop managing it locally, pass --confirm-host-name ' +
+          host.name,
+      );
+    const changed = host.phase !== 'forgotten';
+    host.phase = 'forgotten';
+    if (changed) await saveSetup(directory, data);
+    return {
+      changed,
+      phase: host.phase,
+      name: host.name,
+      connectorId: host.connectorId,
+      remoteCleanupVerified: false,
+      hostCleanupRequired: true,
+      nextAction:
+        'You may now run setup uninstall. Check this exact connector name/ID in Doubao and remove it manually; its record remains in setup.json.',
+    };
+  } finally {
+    release();
+  }
+}
+
 // Explicit host operation, separate from stopping the Hub or canceling model work.
 export async function configureDoubaoHost(
   directory: string,
@@ -564,6 +631,21 @@ export async function configureDoubaoHost(
       );
     if ((!data.doubaoHost || data.doubaoHost.phase === 'removed') && operation !== 'install')
       return { changed: false, phase: 'absent', hostLoadingVerified: false };
+    if (data.doubaoHost?.phase === 'forgotten')
+      throw new HubError(
+        'host_registration_forgotten',
+        'Host registration was explicitly forgotten. Its record is retained for manual cleanup; automatic host operations are disabled for this setup.',
+      );
+    if (operation === 'remove' && data.doubaoHost && creationUnattempted(data.doubaoHost)) {
+      data.doubaoHost.phase = 'removed';
+      await saveSetup(directory, data);
+      return {
+        changed: true,
+        phase: 'removed',
+        creationAttempted: false,
+        hostLoadingVerified: false,
+      };
+    }
     api = await connect(port);
     if (!data.doubaoHost || data.doubaoHost.phase === 'removed') {
       data.doubaoHost = { name: 'agenthub-' + randomUUID(), attempted: false, phase: 'pending' };

@@ -38,7 +38,7 @@ agenthub setup init --harness claude --session-id CLAUDE_TEST_UUID
 agenthub setup init --targets /ABS/targets.json
 ```
 
-只保留实际需要授权的目标。生成器仅接受本机 Claude/Codex UUID，新建 `$HOME/.agenthub/doubao`，权限 0700；已有目录会报错，不覆盖凭据。`--directory /ABS/NEW_DIRECTORY` 和 `--port 3214` 可自定义目录与端口；自定义父目录需已存在且为规范路径。配置/凭据权限为 0600，生成的 `agenthub-mcp` 启动器为 0700。
+只保留实际需要授权的目标。生成器仅接受本机 Claude/Codex UUID，在创建文件前使用与清单加载相同的校验规则。新建 `$HOME/.agenthub/doubao`，权限 0700；已有目录会报错，不覆盖凭据。`--directory /ABS/NEW_DIRECTORY` 和 `--port 3214` 可自定义目录与端口；自定义父目录需已存在且为规范路径。配置/凭据权限为 0600，生成的 `agenthub-mcp` 启动器为 0700。
 
 文件包括独立 owner/caller/enrollment token、针对明确目标的 read/send 授权、Hub 与连接器 profile、setup 清单、`mcp.json` 和启动器。输出只有路径与参数数组，不包含密钥。MCP 使用 Node/CLI 绝对路径和 caller 凭据，并清除继承的 `AGENTHUB_TOKEN`。需要保留该安装路径；变更目标或安装位置时，停用旧配置并生成新目录。生命周期命令会拒绝被手工修改的生成文件。
 
@@ -75,6 +75,15 @@ agenthub setup host-remove --directory "$HOME/.agenthub/doubao" --doubao-cdp-por
 
 `installed` 仅表示登记和连接接收已核验；实际工具与回复测试前，`hostLoadingVerified`、`deliveryTested` 仍为 false。`host-enable/disable` 修改宿主条目，`setup enable/disable` 控制 Hub，两者独立且显式。
 
+登记在尝试创建之前失败时，`host-remove` 会直接清理 pending 记录，无需连接豆包；也可直接执行 `setup uninstall`。已经尝试创建后，被拒绝或丢失的响应不能证明条目是否存在；条目被手工删除、豆包升级也可能让 API 清理失败。此时可使用离线恢复命令，名称必须与报错、`setup doctor` 的 `hostRegistration` 或私有 `setup.json` 中的记录完全一致：
+
+```sh
+agenthub setup host-forget --directory "$HOME/.agenthub/doubao" --confirm-host-name agenthub-EXACT_UUID
+agenthub setup uninstall --directory "$HOME/.agenthub/doubao"
+```
+
+`host-forget` 不需要 CDP 连接。它将状态记为 `forgotten`，保留名称/ID，返回 `remoteCleanupVerified: false`；应按记录在豆包中检查并手工删除条目。确认后允许本地卸载，该配置也会停止提供自动宿主操作。此命令本身不停止 Hub 或撤销凭据，需继续执行 `setup uninstall`。
+
 ### 手工入口
 
 macOS 豆包工作 2.35.15 的界面入口：
@@ -104,7 +113,9 @@ agenthub setup uninstall --directory "$HOME/.agenthub/doubao"
 
 停用会持久化禁用标志，等待本配置的受管理 Hub 退出，并拒绝新的启动器连接；harness 已经接受的在途工作不会被中断。启用只允许后续显式启动。SQLite 进程锁防止双实例，并在进程崩溃后释放；命令不会按猜测的 PID 杀进程。通过旧版 `serve` 路径独立启动的 Hub，需要先另行停止。
 
-卸载只删除未被修改的生成文件，保留私有回执状态、生命周期元数据和其他文件。**宿主条目需另行清理**：API 登记的豆包条目必须先执行 `setup host-remove`，否则 uninstall 会拒绝；手工添加的条目在豆包界面删除。如果 `connect` 安装了原生 MCP，也应删除对应条目。命令明确返回 `hostCleanupRequired: true`，不编辑其他宿主配置。中断后的卸载可重试，删除前会校验所有剩余文件。已卸载配置不能重新启用。
+配置端口上的其他服务返回 401/403/404/405、HTML 或非 Hub JSON 时，清理可继续，服务保持运行。超时、连接重置或服务端故障会返回 `setup_hub_unknown` 并保留凭据；检查或停止该服务后重试。能响应且接受本配置凭据的 Hub 仍须先停止。
+
+卸载只删除未被修改的生成文件，保留私有回执状态、生命周期元数据和其他文件。**宿主条目需另行清理**：API 登记的豆包条目先执行 `setup host-remove`；无法核验远端清理时，使用上述显式 `host-forget` 恢复流程。从未尝试创建的记录可直接卸载。手工添加的条目在豆包界面删除；如果 `connect` 安装了原生 MCP，也应删除对应条目。命令明确返回 `hostCleanupRequired: true`，不编辑其他宿主配置。中断后的卸载可重试，删除前会校验所有剩余文件。已卸载配置不能重新启用。
 
 ## 可选 CLI 插件
 
