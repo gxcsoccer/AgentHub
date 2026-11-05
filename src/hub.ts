@@ -50,6 +50,7 @@ export class AgentHub {
   private closed = false;
   private readonly initialization: Promise<void>;
   private storageFailure?: Error;
+  private readonly featureMetadata = new Map<string, Json>();
   constructor(
     adapters: Adapter[],
     private readonly options: {
@@ -165,6 +166,55 @@ export class AgentHub {
   async ready(): Promise<void> {
     await this.initialization;
     this.healthy();
+  }
+  /** Trusted in-process extension state, never exposed through the public API. */
+  featureState(namespace: string): AdapterState {
+    const prefix = `feature:${text(namespace, 'namespace', 64)}:`;
+    return {
+      get: (key) => {
+        this.healthy();
+        return structuredClone(
+          this.options.store?.getMeta(prefix + key) ?? this.featureMetadata.get(prefix + key),
+        );
+      },
+      set: (key, value) =>
+        this.storeAction(() => {
+          if (this.options.store) this.options.store.setMeta(prefix + key, value);
+          else this.featureMetadata.set(prefix + key, structuredClone(value));
+        }),
+    };
+  }
+  /** Only a verified connector may supply responder. No receipt/history access is implied. */
+  async replyToMessage(id: string, responder: SessionAddress, body: string, callerId: string) {
+    await this.ready();
+    text(body, 'message');
+    this.prune();
+    const entry = this.entries.get(id);
+    if (
+      !entry ||
+      entry.envelope.messageKind !== 'request' ||
+      addressKey(entry.envelope.to) !== addressKey(responder)
+    )
+      throw new HubError('request_not_found', 'No request for this source', 404);
+    this.access.require(callerId, 'send', responder, responder.sessionId);
+    if (entry.envelope.replyTo)
+      this.access.require(
+        callerId,
+        'send',
+        entry.envelope.replyTo,
+        entry.envelope.replyTo.sessionId,
+      );
+    if (entry.receipt.status === 'replied') {
+      if (entry.receipt.reply?.text !== body)
+        throw new HubError('reply_conflict', 'A different reply is already recorded', 409);
+      return { request: id, accepted: true, duplicate: true };
+    }
+    this.apply(this.adapter(responder), {
+      messageId: id,
+      status: 'replied',
+      reply: { text: body },
+    });
+    return { request: id, accepted: true, duplicate: false };
   }
   private healthy(): void {
     if (this.storageFailure)
@@ -455,6 +505,9 @@ export class AgentHub {
     )
       return;
     if (entry.receipt.status === 'replied') return;
+    // Result messages can accumulate transport evidence, never another business reply.
+    if (entry.envelope.messageKind === 'result' && (update.status === 'replied' || update.reply))
+      return;
     if (update.status !== 'unknown' && rank[update.status] < rank[entry.receipt.status]) return;
     if (
       update.status === 'unknown' &&
@@ -496,6 +549,7 @@ export class AgentHub {
       const result = await this.sendInput(
         {
           messageId,
+          messageKind: 'result',
           to,
           delivery,
           text: body,

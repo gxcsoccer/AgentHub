@@ -4,6 +4,8 @@
 
 [English](README.md) · [接口](docs/API.zh-CN.md) · [设计](docs/DESIGN.zh-CN.md) · [验证](docs/VERIFICATION.zh-CN.md) · [豆包接入](docs/DOUBAO.zh-CN.md) · [待办清单](docs/ROADMAP.zh-CN.md)
 
+下一步设计：[Agent 自动接入与最小感知协作](docs/AGENT_CONNECTOR.zh-CN.md)（正式套件尚未实现；[原生身份](docs/SESSION_IDENTITY_EXPERIMENT.zh-CN.md)、[双向收发](docs/CONNECTOR_ROUNDTRIP_EXPERIMENT.zh-CN.md)及[安装/生命周期](docs/CONNECTOR_LIFECYCLE_EXPERIMENT.zh-CN.md)已有隔离原型证据）。
+
 ## 当前实现
 
 | 能力             | Codex                              | Claude Code                                            |
@@ -94,7 +96,7 @@ try {
 
 其他应用使用 `@gxcsoccer/agenthub/client` 中的 `AgentHubClient` 访问本地服务；该导出仅依赖 fetch。CLI/MCP 共用守护进程中的回执和回调监听。
 
-消息可指定 `replyTo`，将第一条关联回复转发到指定会话。转发有独立消息 ID，保留 `inReplyTo`，增加跳数，不再安装回复路由。原回执包含 `forwardedMessageId` 和可能的 `forwardError`。
+消息可指定 `replyTo`，将第一条关联回复转发到指定会话。转发有独立消息 ID，保留 `inReplyTo`，增加跳数，以 `messageKind: "result"` 投递，不再提供回复模板或回复路由；结果回执保留投递证据，不等待 replied。此分支改动尚未发布。原回执包含 `forwardedMessageId` 和可能的 `forwardError`。
 
 Codex 回复需要所有者在创建会话时注册导出的 `codexReplyTool`。`getSession()` 返回 `replyReadiness`：`ready`、`needs_attach`、`missing_tool`、`unknown` 或 `unavailable`。工具注册根据本地会话元数据核验；日志尚未持久化或无法读取时保持 unknown。发送和重连不自动建立监听。断连或 Hub 重启后，所有者可显式执行下面的 attach：仅接受已加载、工具已核验的根会话，不传配置覆盖；调用方明确接受 loaded 检查与上游 thread/resume 之间发生卸载可能恢复会话的竞态。不能动态为任意已有会话安装工具。
 
@@ -133,3 +135,5 @@ npm run smoke:recovery -- --run
 MIT，保留原 Codex Bridge 署名。
 
 [新增权限、持久事件、全文检索、ACP 与 Windows 范围](docs/EXTENSIONS.zh-CN.md)。
+
+Claude/Codex 原生登记、共享协作操作、Codex MCP connect 及显式启用的 Claude CLI connect 已在当前分支实现（未发布）；安装步骤和边界见[连接器接入](docs/CONNECTOR_SETUP.zh-CN.md)。Claude CLI 激活经原生消息和现有 Bash 权限完成，可能启动模型轮次；原生 MCP 外部 reload 仍未实现。

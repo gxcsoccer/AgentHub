@@ -8,6 +8,9 @@ import { loadToken, localPort } from '../vendor/codex-bridge/src/config.js';
 import { AgentHubClient } from './client.js';
 import { createHubServer } from './server.js';
 import { loadAccessFile } from './access-file.js';
+import { loadConnectorProfiles, loadConnectorClientProfile } from './connectors/config.js';
+import { ConnectorService } from './connectors/service.js';
+import { ConnectorClient } from './connectors/client.js';
 import { openLocalHub } from './runtime.js';
 import { address, object, text } from './validation.js';
 import type { MessageInput } from './types.js';
@@ -22,6 +25,8 @@ async function main() {
       config: { type: 'string' },
       cwd: { type: 'string' },
       'access-file': { type: 'string' },
+      'connector-file': { type: 'string' },
+      'connector-profile': { type: 'string' },
       'token-file': { type: 'string' },
       'state-file': { type: 'string' },
       ephemeral: { type: 'boolean' },
@@ -38,6 +43,12 @@ async function main() {
       after: { type: 'string' },
       'origin-name': { type: 'string' },
       'timeout-ms': { type: 'string' },
+      to: { type: 'string' },
+      message: { type: 'string' },
+      request: { type: 'string' },
+      'deadline-seconds': { type: 'string' },
+      'activation-id': { type: 'string' },
+      'retry-activation': { type: 'boolean' },
     },
   });
   const command = positionals[0] ?? 'help';
@@ -45,7 +56,7 @@ async function main() {
     console.log(`AgentHub 0.1.0
 
   agenthub serve [--config FILE] [--port 3211] [--token-file FILE]
-                  [--state-file FILE | --ephemeral] [--access-file FILE]
+                  [--state-file FILE | --ephemeral] [--access-file FILE] [--connector-file FILE]
   agenthub instances
   agenthub doctor [--harness NAME --instance local] [--session-id ID] [--timeout-ms 10000]
   agenthub sessions --harness codex|claude [--instance local] [--search TEXT]
@@ -59,6 +70,15 @@ async function main() {
   agenthub status --message-id UUID [--wait-ms 30000]
   agenthub events [--after CURSOR]
   agenthub mcp [--origin-name NAME]
+  agenthub mcp --connector-profile FILE
+  agenthub connector-hook --connector-profile FILE  (Claude lifecycle JSON on stdin)
+  agenthub connections
+  agenthub agent --connector-profile FILE list-peers
+  agenthub agent --connector-profile FILE ask --to @harness/name --message TEXT [--deadline-seconds 3600]
+  agenthub agent --connector-profile FILE reply --request UUID --message TEXT
+  agenthub agent --connector-profile FILE activate --activation-id UUID
+  agenthub connect --harness codex|claude --session-id ID [--connector-profile FILE] [--wait-ms 30000]
+                   [--retry-activation] (Claude CLI: explicitly replace an expired handshake)
 
 Clients: --url http://127.0.0.1:3211 --token-file FILE
 Environment: AGENTHUB_URL, AGENTHUB_TOKEN, AGENTHUB_TOKEN_FILE, AGENTHUB_STATE_FILE
@@ -87,9 +107,76 @@ No session is launched, resumed or interrupted implicitly.`);
       'status',
       'events',
       'mcp',
+      'connector-hook',
+      'connections',
+      'connect',
+      'agent',
     ].includes(command)
   )
     throw new Error(`Unknown command: ${command}`);
+  if (
+    (values['connector-profile'] && command !== 'connect') ||
+    command === 'connector-hook' ||
+    command === 'agent'
+  ) {
+    if (command !== 'mcp' && command !== 'connector-hook' && command !== 'agent')
+      throw new Error('--connector-profile requires mcp, connector-hook or agent');
+    const profile = await loadConnectorClientProfile(
+      text(values['connector-profile'], '--connector-profile', 4096),
+    );
+    if (command === 'agent') {
+      if (profile.harness === 'codex')
+        throw new Error('Agent CLI transport currently requires Claude');
+      const client = new ConnectorClient({ ...profile, transport: 'cli' });
+      const operation = positionals[1];
+      let result: unknown;
+      if (operation === 'list-peers') result = await client.listPeers();
+      else if (operation === 'activate')
+        result = await client.activate(text(values['activation-id'], '--activation-id', 64));
+      else if (operation === 'ask')
+        result = await client.ask({
+          to: text(values.to, '--to', 1024),
+          message: text(values.message, '--message', 100000),
+          ...(values['deadline-seconds']
+            ? { deadlineSeconds: Number(values['deadline-seconds']) }
+            : {}),
+        });
+      else if (operation === 'reply')
+        result = await client.reply({
+          request: text(values.request, '--request', 64),
+          message: text(values.message, '--message', 100000),
+        });
+      else throw new Error('Expected agent list-peers, ask, reply or activate');
+      console.log(JSON.stringify(result));
+    } else if (command === 'mcp') {
+      const { serveConnectorMcp } = await import('./connectors/mcp.js');
+      await serveConnectorMcp(new ConnectorClient(profile));
+    } else {
+      let raw = '';
+      for await (const chunk of process.stdin) {
+        raw += chunk;
+        if (Buffer.byteLength(raw) > 65536) throw new Error('Lifecycle input too large');
+      }
+      const event = object(JSON.parse(raw));
+      if (event.hook_event_name !== 'SessionStart' && event.hook_event_name !== 'SessionEnd')
+        throw new Error('Expected SessionStart or SessionEnd hook');
+      const client = new AgentHubClient({
+        baseUrl: profile.baseUrl,
+        token: profile.enrollmentToken,
+        timeoutMs: 5000,
+      });
+      console.log(
+        JSON.stringify(
+          await client.connectorHook({
+            pid: process.pid,
+            event: event.hook_event_name,
+            sessionId: text(event.session_id, 'session_id', 64),
+          }),
+        ),
+      );
+    }
+    return;
+  }
   const tokenPath = resolve(
     values['token-file'] ??
       process.env.AGENTHUB_TOKEN_FILE ??
@@ -109,7 +196,16 @@ No session is launched, resumed or interrupted implicitly.`);
         );
     const access = values['access-file'] ? await loadAccessFile(values['access-file']) : undefined;
     const hub = await openLocalHub(config, { stateFile, callers: access?.policies });
-    const app = createHubServer({ hub, token, callers: access?.credentials });
+    let app: ReturnType<typeof createHubServer>;
+    try {
+      const connectors = values['connector-file']
+        ? new ConnectorService(hub, await loadConnectorProfiles(values['connector-file']))
+        : undefined;
+      app = createHubServer({ hub, token, callers: access?.credentials, connectors });
+    } catch (error) {
+      await hub.close();
+      throw error;
+    }
     let stopping = false;
     const stop = () => {
       if (stopping) return;
@@ -145,11 +241,27 @@ No session is launched, resumed or interrupted implicitly.`);
     token,
     ...(command === 'doctor' ? { timeoutMs: Number(values['timeout-ms'] ?? 10000) } : {}),
   });
+  if (command === 'connections') {
+    console.log(JSON.stringify(await client.connections()));
+    return;
+  }
   const scope = () => ({
     harness: text(values.harness, '--harness', 64),
     instance: values.instance,
   });
   const target = () => address({ ...scope(), sessionId: values['session-id'] });
+  if (command === 'connect') {
+    const result = await client.connectSession(target(), {
+      ...(values['connector-profile']
+        ? { clientProfilePath: resolve(values['connector-profile']) }
+        : {}),
+      waitMs: Number(values['wait-ms'] ?? 0),
+      ...(values['retry-activation'] ? { retryActivation: true } : {}),
+    });
+    console.log(JSON.stringify(result));
+    process.exitCode = result.exitCode;
+    return;
+  }
   const query = {
     ...(values.limit ? { limit: Number(values.limit) } : {}),
     ...(values.cursor ? { cursor: values.cursor } : {}),

@@ -1,5 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { authenticator, type CallerCredential } from './access.js';
+import { authenticator, OWNER, type CallerCredential } from './access.js';
+import type { ConnectorService } from './connectors/service.js';
 import type { HubEvent } from './events.js';
 import { AgentHub } from './hub.js';
 import {
@@ -19,8 +20,13 @@ export function createHubServer(options: {
   token: string;
   allowedOrigins?: string[];
   callers?: CallerCredential[];
+  connectors?: ConnectorService;
 }) {
   const authenticate = authenticator(options.token, options.callers ?? [], options.hub.access);
+  options.connectors?.assertCredentialSeparation([
+    options.token,
+    ...(options.callers ?? []).map((caller) => caller.token),
+  ]);
   const streams = new Set<ServerResponse>();
   const { hub } = options;
   const server = createServer((req, res) => {
@@ -56,9 +62,51 @@ export function createHubServer(options: {
       res.end();
       return;
     }
+    const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+    if (
+      req.method === 'POST' &&
+      ['/v1/connector/enroll', '/v1/connector/hook', '/v1/connector/call'].includes(url.pathname)
+    ) {
+      if (!options.connectors)
+        throw new HubError('connector_disabled', 'Connectors are not configured', 503);
+      const token = /^Bearer (\S{32,512})$/.exec(req.headers.authorization ?? '')?.[1];
+      if (!token) throw new HubError('invalid_credential', 'Connector credential required', 401);
+      const body = await readBody(req);
+      let result: unknown;
+      if (url.pathname === '/v1/connector/enroll')
+        result = await options.connectors.enroll(token, body);
+      else if (url.pathname === '/v1/connector/hook')
+        result = await options.connectors.hook(token, body);
+      else {
+        if (Object.keys(body).some((key) => !['evidence', 'operation'].includes(key)))
+          throw new HubError('invalid_input', 'Unexpected connector input');
+        result = await options.connectors.call(token, body.evidence, body.operation);
+      }
+      sendJson(res, 200, result);
+      return;
+    }
     const callerId = authenticate(req.headers.authorization);
     await hub.ready();
-    const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+    if (req.method === 'POST' && url.pathname === '/v1/connect') {
+      if (callerId !== OWNER)
+        throw new HubError('forbidden', 'Connector installation requires the owner', 403);
+      if (!options.connectors)
+        throw new HubError('connector_disabled', 'Connectors are not configured', 503);
+      sendJson(
+        res,
+        200,
+        await options.connectors.connect(await readBody(req), req.socket.localPort!),
+      );
+      return;
+    }
+    if (req.method === 'GET' && url.pathname === '/v1/connections') {
+      if (callerId !== OWNER)
+        throw new HubError('forbidden', 'Connection diagnostics require the owner', 403);
+      if (!options.connectors)
+        throw new HubError('connector_disabled', 'Connectors are not configured', 503);
+      sendJson(res, 200, await options.connectors.connections());
+      return;
+    }
     const q = Object.fromEntries(url.searchParams);
     const scope = () => ({
       harness: text(q.harness, 'harness', 64),

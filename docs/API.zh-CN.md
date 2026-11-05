@@ -21,6 +21,8 @@
 
 消息必填 `messageId`（UUID）、`to`、`origin.name`、`delivery`、`text`。可选 `origin.session`、`correlationId`、`inReplyTo`、`replyTo`、`expiresAt`（默认一小时）、`hopCount`（0–8）。来源是归因信息，不是远程身份认证。未知字段不传给后端。可选回复路由只转发首个关联回复，转发拥有独立回执。
 
+本分支新增可选 `messageKind: "request" | "result"`，HTTP、SDK 和 MCP `send_message` 共用语义；省略时保留原有请求行为。`result` 不允许 `replyTo`，两端渲染省略回复模板，adapter 和核心均拒绝针对结果的业务回复。结果仍能记录 accepted、held、received 等投递证据，不能以等待 replied 判断结果已读。自动回复转发总是使用 result，并保留原请求的关联及期限。messageKind 参与幂等指纹；显式托管 user_input 不接受此字段。此改动尚未发布到 npm。
+
 HTTP 202 只表示返回了回执，必须检查其状态：
 
 | 状态              | 证据                                |
@@ -54,3 +56,5 @@ SSE 的 `message.status` 包含回执快照，`adapter.event` 包含当前连接
 诊断最多并发 4 个实例，最多检查前 32 个；每个实例只读取 limit=10 的第一页并显式报告 hasMore。一个实例失败不会跳过其他实例。报告不包含名称、cwd、正文、token 或原始后端错误。CLI doctor 每请求默认 10 秒；通用 fetch 客户端新增可选 `timeoutMs`（整数 1..120000，默认仍为 70000），不自动重试；该超时用于 JSON 请求，SSE 仍使用调用方提供的 signal。CLI 退出码 0/2/1 对应 ok/warning/error；令牌文件缺失或参数错误走原有 stderr 错误路径，不创建令牌或启动服务。
 
 新增调用方权限、持久事件语义、全文检索和显式托管接口见[扩展说明](EXTENSIONS.zh-CN.md)。
+
+Claude/Codex 原生登记、共享协作操作、Codex MCP connect 及显式启用的 Claude CLI connect 已在当前分支实现（未发布）；安装步骤和边界见[连接器接入](CONNECTOR_SETUP.zh-CN.md)。Claude CLI 激活经原生消息和现有 Bash 权限完成，可能启动模型轮次；原生 MCP 外部 reload 仍未实现。

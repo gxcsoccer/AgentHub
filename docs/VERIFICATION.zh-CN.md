@@ -1,5 +1,65 @@
 # 验证说明
 
+## 2026-11-05：Claude CLI 激活与混合接入（未发布）
+
+`npm run check` 通过 **130 项主项目 + 41 项 Bridge + 21 项测试进程安全检查，共 192 项**；主项目行/分支/函数覆盖率 **96.95% / 88.10% / 94.99%**。`npm run test:package` 通过临时打包安装、导出、CLI、HTTP 和 SQLite 检查。新增合同测试覆盖进程祖先/启动身份、UUID 切换、凭证分层与撤权、激活关联、文本回复不能确认激活、过期/显式重试、发现失败不能提交就绪、受限 CLI 入口与来源防伪。
+
+`smoke:connector:cli -- --run` 在 macOS + Claude Code 2.1.318 上通过 **10 项真实检查**。脚本新建三个独立 PTY：两个在已启动并完成普通轮次之后通过生产所有者 CLI 激活；第三个禁用 Bash，原生收件并回复后依然保持未核验，重复 connect 没有重发。正向用例覆盖两个 Claude 主动发起、request/reply/result、Hub 正常重启保留激活与绑定、用户独立轮次之后收到关联结果、clear 后重新 connect 的新 UUID、旧在途回复不迁移，以及 result 无业务回复。
+
+`smoke:connector:codex -- --run --claude-cli` 另通过 **7 项真实检查**，使用 Codex App Server 0.166.0 与 Claude 2.1.318：已有 Codex 根会话 MCP 安装与只读身份握手、已有 Claude CLI 会话原生激活、真实 MCP metadata、重复接入保留权限、两个跨 harness 方向的实际请求/回复/结果，以及结果终止。Codex 激活本身没有模型轮次；Claude 激活使用模型。全程没有 thread/resume 或原生动态回复工具。
+
+两个成功 CLI 目标的精确命令许可由测试所有者在启动时设置；运行中 connect 未安装 skill/MCP/hook，未改宿主权限。来源由生产 Hub 独立核验进程链与原生目录，而不是采信 CLI 自报的祖先。初步独立探针通过 3 项检查，包含无 skills 目录时的触发与 clear 后新环境 ID；它不计入上述生产验收数。
+
+失败记录也保留：初始探针的含环境变量命令被原有 Bash 权限拒绝；生产首轮将安全路径全部加引号，其命令同样被测试许可规则拒绝，connect 未返回成功。生成器现在仅在 shell 需要时引用参数；新建隔离会话重测通过，未扩大权限来放行。证据只证明这些具体命令和规则，不证明其他 Bash 权限组合。
+
+私有 0600 报告：`.local/verification/connector-claude-cli-live.json`、`connector-codex-claude-cli-live.json`；失败证据为 `claude-cli-activation-spike.json`、`connector-claude-cli-quoted-command-live.json`，旁边保留终端日志。三 Claude 测试进程和混合测试的 Claude/App Server 均已退出；测试 Codex thread 已归档，临时目录与复制认证已删除。没有操作工作会话，私有证据不得发布。
+
+边界：这是显式启用 `transport: cli` 后，在原有权限允许时的模型驱动激活，不是 Claude 外部 MCP reload，也不保证任意会话无需审批。用户插话仍为先结束独立轮次、再到结果；正常重启不替代强杀恢复。真实 busy 激活、完整并发/期限矩阵、队列入站后 clear、Linux/Windows/桌面/SDK 仍待扩展。连接器注册表更新为版本 3（兼容读取 1/2），新增激活元数据版本 1；核心消息存储仍为 schema 3。激活注册表上限 256，自动回收待补。操作见[接入说明](CONNECTOR_SETUP.zh-CN.md)。
+
+## 2026-11-05：Codex 连接器与统一 connect（阶段 3 部分，未发布）
+
+`npm run check` 通过 124 项主项目测试、41 项 Bridge 测试和 21 项测试进程安全检查，共 **186 项**；主项目行/分支/函数覆盖率为 **96.80% / 88.17% / 94.80%**。新增覆盖逐调用身份与连接启动标识核验、共享 MCP 进程的并发身份隔离、配置版本冲突、重复接入、只读握手和历史绑定不能冒充当前就绪。`npm run test:package` 通过临时打包安装、公开导出、CLI、HTTP 及 SQLite 恢复检查。
+
+`npm run smoke:connector:codex -- --run` 在 macOS、Codex App Server 0.166.0、Claude Code 2.1.318 上通过 **6 项真实检查**：
+
+1. 对安装 MCP 前已创建的空闲 Codex 根会话执行生产 `agenthub connect`，完成配置写入、reload、只读登记和就绪返回；此时未启动任何模型轮次。
+2. 后续真实 Codex MCP 调用核验宿主 metadata 与连接启动标识，发现结果正确显示本会话的连接器回复状态。
+3. 再次 connect 不重复 reload，保留现有工具权限。
+4. Claude 发起请求，Codex 通过 `reply_agent` 回复，Claude 实际读取关联 result。
+5. Codex 发起请求，Claude 回复，Codex 实际读取关联 result。
+6. result 没有业务回复；全部过程未注册原生动态回复工具，也未调用 `thread/resume`。
+
+首个所有者只读握手由原生 `mcpServer/tool/call` 注入 `threadId`；模型调用还带 `sessionId`，存在时必须一致。两条路径都校验当前实例的 MCP 启动标识。发现列表只对刚核验的来源报告连接器就绪，其他已配置 Codex peer 在 `ask_agent` 时核验，避免沿用旧动态工具状态误报缺失。
+
+脚本只操作独立 App Server/home/socket 和新建 Claude PTY，Claude 启动时已加载连接器。测试所有者单独授权三个测试工具；安装器保留已有权限。测试结束已归档 Codex 会话、停止两个进程组、删除临时状态及复制的认证目录。私有报告为忽略目录中的 `.local/verification/connector-codex-live.json`；不得公开发布。
+
+该证据覆盖空闲根会话及上述版本；不代表 Codex 忙碌时 reload、CLI/TUI/桌面入口、其他平台或任意 Claude 已有会话自动激活。reload 的范围是整个 App Server 实例。连接器配置和 caller grants 仍须所有者预先准备，自动配置生成、卸载和完整就绪诊断待补。接入方式见[配置说明](CONNECTOR_SETUP.zh-CN.md)。
+
+## 2026-11-05：Claude 连接器核心（阶段 2，未发布）
+
+`npm run check` 通过 119 项主项目测试、41 项 Bridge 测试和 21 项测试进程安全检查，共 **181 项**。主项目行/分支/函数覆盖率为 **96.96% / 88.84% / 94.55%**；新增覆盖进程身份、credential 分层、SQLite 重开、原生目录变化、分页上限、注册容量、名称歧义、撤权、跨会话回复、CLI 配置和官方 MCP 客户端闭环。
+
+`npm run test:package` 也已通过：临时目录打包并安装 tarball，检查连接器公开导出、两个 CLI、HTTP 和 SQLite 恢复；包内没有私有报告或测试文件。
+
+`npm run smoke:connector -- --run` 在 macOS + Claude 2.1.318 通过 **9 项真实检查**：两个原生 Claude MCP 进程自动登记；实际 ask/reply/result 闭环；Hub 正常重启后复用持久绑定和进程凭证；第二个 Claude 主动发起；等待期间用户完成独立轮次后收到关联答案；`/clear` 的真实 SessionStart 刷新；旧在途答案不跟随到新 UUID；新 UUID 重新完成闭环；result 不生成业务回复。
+
+模型只获准三个 MCP 测试工具，无 shell/文件工具。测试启动时加载生产 CLI 和 hooks，Hub 只发现测试创建的两个 PID/cwd。最终报告确认两个进程组已退出、临时配置和状态目录已删除。报告为忽略目录中的私有 `connector-claude-live.json`，终端日志同目录；不得将私有报告发布。第一轮因 macOS `/tmp` 与 `/private/tmp` 的测试路径比较失败，修正脚本后重测；失败记录为 `connector-claude-live-path-failure.json`。
+
+此项不是任意已有会话的外部自动激活验收。用户插话用例先完成用户轮次再投递结果，不证明全部忙碌时序；本轮使用正常 Hub 重启，不代表连接器强杀恢复。Linux 仅有进程读取 fixture 测试；其他宿主/平台、入队后 clear、真实 PID 复用、完整并发/期限矩阵仍待验收。[配置和明确边界](CONNECTOR_SETUP.zh-CN.md)。
+
+## 2026-11-05：连接器阶段 1（未发布）
+
+阶段 1 验收时，`feat/agent-connector` 分支实现 `messageKind`、两端结果渲染、回复入口/核心保护和 schema 3 兼容。当时自动身份登记、简化协作工具及 `connect` 尚未实现；后续进展见上方阶段 2。本节对应新实现，不替代下方历史验收范围。
+
+- `npm run check`：103 项主项目测试、41 项保留 Bridge 测试、21 项测试进程安全检查通过，共 165 项；主项目行/分支/函数覆盖率为 96.48% / 87.85% / 93.98%。包含旧载荷幂等、HTTP/MCP 传递、强制回复拒绝、持久化及恢复保护。
+- macOS、Claude 2.1.318、Codex 0.166.0，使用独立 App Server 和新建 allowlist 会话。修改后的 `smoke:isolated` 通过 7 项检查，Codex/Claude 均输出包含新结果 ID 和正文的模型观察标记，结果回执没有业务回复。
+- `smoke:recovery` 通过 7 项检查，覆盖忙碌时显式重新 attach、Hub SIGKILL 后迟到回复与一次转发、持久 SSE 游标以及再次重启。结果由真实 Codex 输出确认读取，回执保留 accepted，无再次业务回复。
+- 首轮恢复测试在结果验收前失败：旧脚本预期持久游标在重启后失效，与已有 schema 2 的持久事件语义冲突。修正为重放到 ready 且无 gap 后，独立新会话复测通过；失败记录保留，不能计为通过。
+
+私有 0600 报告：`.local/verification/connector-isolated.json`、`connector-recovery.json`；失败记录为 `connector-recovery-stale-assertion.json`。测试进程均退出，测试 thread 全部归档/卸载，临时 App Server 与复制的测试认证目录均移除，未写入工作会话。这不覆盖连接器自动登记、Claude 自动激活或两个 Claude 自主协作。
+
+schema 3 会升级旧存储，旧版程序拒绝读取；回退需使用升级前副本。验证只使用临时数据库，没有升级用户运行中的 Hub 状态。
+
 [English](VERIFICATION.md)
 
 ## 自动化检查
@@ -9,7 +69,7 @@ npm ci
 npm run check
 ```
 
-当前在 Linux/macOS 包含 97 项 AgentHub、原 Codex Session Bridge 的 41 项及 21 项真实验收脚本防护测试，共 159 项，并执行格式、严格 TypeScript 和覆盖率门槛检查。原 Bridge 从自己的目录运行测试，保留其原始路径与契约。
+连接器实施前的基线在 Linux/macOS 包含 97 项 AgentHub、原 Codex Session Bridge 的 41 项及 21 项真实验收脚本防护测试，共 159 项；当前本地结果见上方各阶段记录。检查同时执行格式、严格 TypeScript 和覆盖率门槛。原 Bridge 从自己的目录运行测试，保留其原始路径与契约。
 
 新增测试覆盖：并发幂等、容量/过期、载荷冲突、不确定投递、提前/迟到回复、有限回复转发、关闭竞态、Codex 工具输出与显式审批、Claude 本地 socket 协议和反向回调、策略控制帧、损坏/过期回调、历史大小和游标变化、认证/Origin、非法 HTTP 请求、原有 JSON CLI 命令、真实 stdio 子进程中的七个 MCP 工具、SSE 慢消费者/CRLF/多行数据以及 OpenAPI 一致性。
 

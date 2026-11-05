@@ -41,6 +41,10 @@ try {
     import { join } from 'node:path';
     import { once } from 'node:events';
     const core = await import(${JSON.stringify(metadata.name)});
+    assert.equal(typeof core.ConnectorService, 'function');
+    assert.equal(typeof core.ConnectorClient, 'function');
+    const mcp = await import(${JSON.stringify(metadata.name + '/mcp')});
+    assert.equal(typeof mcp.createConnectorMcpServer, 'function');
     for (const suffix of ['/client', '/mcp', '/codex-bridge', '/codex-bridge/client']) await import(${JSON.stringify(metadata.name)} + suffix);
     const stateFile = join(process.cwd(), 'private-state', 'state.sqlite');
     const hub = await core.openLocalHub({ codex: false, claude: false }, { stateFile });

@@ -1,0 +1,379 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import { mkdtemp, rm, readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { openReceiptStore, type ReceiptStore } from '../src/store.js';
+import { AgentHub } from '../src/hub.js';
+import { ConnectorService } from '../src/connectors/service.js';
+import { TestAdapter } from './helpers.js';
+import type { Page, SessionAddress, SessionInfo } from '../src/types.js';
+import { HubError } from '../src/validation.js';
+import type { ProcessIdentity, ConnectorProfile } from '../src/connectors/types.js';
+
+const token = 'connector-enrollment-'.repeat(3);
+async function fixture(t: test.TestContext, store?: ReceiptStore) {
+  const a = { harness: 'claude', instance: 'local', sessionId: randomUUID() };
+  const b = { ...a, sessionId: randomUUID() };
+  const rows = new Map<string, SessionInfo>([
+    [
+      a.sessionId,
+      {
+        address: a,
+        name: 'worker',
+        status: 'idle',
+        capabilities: {
+          send: ['peer_message'],
+          history: true,
+          liveEvents: false,
+          reply: 'native_callback',
+        },
+        metadata: { pid: 20001 },
+      },
+    ],
+    [
+      b.sessionId,
+      {
+        address: b,
+        name: 'reviewer',
+        status: 'idle',
+        capabilities: {
+          send: ['peer_message'],
+          history: true,
+          liveEvents: false,
+          reply: 'native_callback',
+        },
+        metadata: { pid: 20002 },
+      },
+    ],
+  ]);
+  class Native extends TestAdapter {
+    override harness = 'claude';
+    override async listSessions(): Promise<Page<SessionInfo>> {
+      return { data: [...rows.values()], nextCursor: null };
+    }
+    override async getSession(address: SessionAddress) {
+      const row = rows.get(address.sessionId);
+      if (!row) throw new HubError('session_not_found', 'Missing', 404);
+      return structuredClone(row);
+    }
+  }
+  const adapter = new Native();
+  const hub = new AgentHub([adapter], {
+    store,
+    callers: [
+      {
+        id: 'agents',
+        grants: [{ harness: 'claude', instance: 'local', operations: ['read', 'send'] }],
+      },
+      {
+        id: 'limited',
+        grants: [
+          {
+            harness: 'claude',
+            instance: 'local',
+            sessions: [b.sessionId],
+            operations: ['read', 'send'],
+          },
+        ],
+      },
+    ],
+  });
+  t.after(() => hub.close());
+  const profiles: ConnectorProfile[] = [
+    {
+      id: 'local-agents',
+      callerId: 'agents',
+      harness: 'claude',
+      instance: 'local',
+      enrollmentToken: token,
+    },
+  ];
+  const processes = new Map<number, ProcessIdentity>();
+  for (const [pid, ppid] of [
+    [10001, 20001],
+    [10002, 20002],
+    [10003, 20001],
+    [20001, 30001],
+    [20002, 30001],
+  ])
+    processes.set(pid!, { pid: pid!, ppid: ppid!, uid: process.getuid!(), start: 'start-' + pid });
+  const inspect = async (pid: number) => {
+    const p = processes.get(pid);
+    if (!p) throw new HubError('identity_unavailable', 'Missing process', 409);
+    return { ...p };
+  };
+  const service = new ConnectorService(hub, profiles, { inspect });
+  const ea = { pid: 10001, startupSessionId: a.sessionId },
+    eb = { pid: 10002, startupSessionId: b.sessionId };
+  return { a, b, rows, adapter, hub, profiles, processes, inspect, service, ea, eb };
+}
+
+test('enrollment separates credentials and resolves caller source from native process evidence', async (t) => {
+  const f = await fixture(t);
+  const registered = await f.service.enroll(token, f.ea);
+  assert.deepEqual(registered.binding.address, f.a);
+  await assert.rejects(f.service.call(token, f.ea, { operation: 'list_peers' }), /credential/);
+  await assert.rejects(f.service.enroll(registered.token, f.ea), /credential/);
+  await assert.rejects(
+    f.service.enroll(token, { ...f.ea, startupSessionId: f.b.sessionId }),
+    /identity|session/i,
+  );
+  await assert.rejects(
+    f.service.call(registered.token, f.eb, { operation: 'list_peers' }),
+    /process|credential/,
+  );
+  const peers = (await f.service.call(registered.token, f.ea, { operation: 'list_peers' })) as {
+    peers: unknown[];
+  };
+  assert.equal(peers.peers.length, 2);
+  assert(!JSON.stringify(await f.service.connections()).includes(registered.token));
+});
+
+test('two bound sources ask and reply without model-supplied source or return route', async (t) => {
+  const f = await fixture(t);
+  const ca = await f.service.enroll(token, f.ea),
+    cb = await f.service.enroll(token, f.eb);
+  const request = {
+    operation: 'ask' as const,
+    messageId: randomUUID(),
+    to: '@claude/reviewer',
+    message: 'Review this',
+    expiresAt: new Date(Date.now() + 60000).toISOString(),
+  };
+  const ack = (await f.service.call(ca.token, f.ea, request)) as {
+    request: string;
+    guidance: string;
+  };
+  assert.equal(ack.request, request.messageId);
+  assert.match(ack.guidance, /end.*turn/i);
+  assert.deepEqual(f.adapter.calls[0]!.origin.session, f.a);
+  assert.deepEqual(f.adapter.calls[0]!.replyTo, f.a);
+  assert.equal(f.adapter.calls[0]!.messageKind, 'request');
+  await f.service.call(ca.token, f.ea, request);
+  assert.equal(f.adapter.calls.length, 1);
+  await assert.rejects(
+    f.service.call(ca.token, f.ea, {
+      operation: 'reply',
+      request: ack.request,
+      message: 'wrong source',
+    }),
+    /request|source/i,
+  );
+  await f.service.call(cb.token, f.eb, {
+    operation: 'reply',
+    request: ack.request,
+    message: 'Reviewed',
+  });
+  await new Promise((r) => setImmediate(r));
+  assert.equal(f.adapter.calls.length, 2);
+  assert.equal(f.adapter.calls[1]!.messageKind, 'result');
+  assert.deepEqual(f.adapter.calls[1]!.to, f.a);
+  await f.service.call(cb.token, f.eb, {
+    operation: 'reply',
+    request: ack.request,
+    message: 'Reviewed',
+  });
+  assert.equal(f.adapter.calls.length, 2);
+  await assert.rejects(
+    f.service.call(cb.token, f.eb, {
+      operation: 'reply',
+      request: ack.request,
+      message: 'changed',
+    }),
+    /reply|recorded/i,
+  );
+  await assert.rejects(
+    f.service.call(ca.token, f.ea, {
+      operation: 'reply',
+      request: f.adapter.calls[1]!.messageId,
+      message: 'loop',
+    }),
+    /request|result/i,
+  );
+});
+
+test('clear requires fresh lifecycle evidence, retains in-flight address and blocks old result handles', async (t) => {
+  const f = await fixture(t);
+  const ca = await f.service.enroll(token, f.ea),
+    cb = await f.service.enroll(token, f.eb);
+  const request = {
+    operation: 'ask' as const,
+    messageId: randomUUID(),
+    to: f.b,
+    message: 'old task',
+    expiresAt: new Date(Date.now() + 60000).toISOString(),
+  };
+  await f.service.call(ca.token, f.ea, request);
+  const fresh = { ...f.a, sessionId: randomUUID() };
+  const old = f.rows.get(f.a.sessionId)!;
+  f.rows.delete(f.a.sessionId);
+  f.rows.set(fresh.sessionId, { ...old, address: fresh });
+  await assert.rejects(
+    f.service.call(ca.token, f.ea, { operation: 'list_peers' }),
+    /lifecycle|identity|session/i,
+  );
+  await f.service.hook(token, { pid: 10003, event: 'SessionStart', sessionId: fresh.sessionId });
+  const changed = (await f.service.call(ca.token, f.ea, { operation: 'identity' })) as {
+    binding: { bindingId: string; address: SessionAddress };
+  };
+  assert.notEqual(changed.binding.bindingId, ca.binding.bindingId);
+  assert.deepEqual(changed.binding.address, fresh);
+  await f.service.call(cb.token, f.eb, {
+    operation: 'reply',
+    request: request.messageId,
+    message: 'old answer',
+  });
+  await new Promise((r) => setImmediate(r));
+  assert.equal(f.adapter.calls.length, 1);
+  assert(f.hub.receipt(request.messageId).forwardError);
+  await f.service.hook(token, { pid: 10003, event: 'SessionEnd', sessionId: f.a.sessionId });
+  assert.deepEqual(
+    ((await f.service.call(ca.token, f.ea, { operation: 'identity' })) as typeof changed).binding
+      .address,
+    fresh,
+  );
+  await f.service.hook(token, { pid: 10003, event: 'SessionEnd', sessionId: fresh.sessionId });
+  await assert.rejects(
+    f.service.call(ca.token, f.ea, { operation: 'identity' }),
+    /ended|lifecycle/,
+  );
+});
+
+test('credentials survive service restart but not PID reuse, owner rotation or profile disable', async (t) => {
+  const f = await fixture(t);
+  const c = await f.service.enroll(token, f.ea);
+  let service = new ConnectorService(f.hub, f.profiles, { inspect: f.inspect });
+  const result = (await service.call(c.token, f.ea, { operation: 'identity' })) as {
+    binding: { bindingId: string };
+  };
+  assert.equal(result.binding.bindingId, c.binding.bindingId);
+  f.processes.get(f.ea.pid)!.start = 'reused';
+  await assert.rejects(
+    service.call(c.token, f.ea, { operation: 'identity' }),
+    /process|credential/,
+  );
+  f.processes.get(f.ea.pid)!.start = 'start-' + f.ea.pid;
+  service = new ConnectorService(f.hub, [{ ...f.profiles[0]!, epoch: 2 }], { inspect: f.inspect });
+  await assert.rejects(service.call(c.token, f.ea, { operation: 'identity' }), /revoked/);
+  service = new ConnectorService(f.hub, [{ ...f.profiles[0]!, enabled: false }], {
+    inspect: f.inspect,
+  });
+  await assert.rejects(service.enroll(token, f.ea), /disabled/);
+  await assert.rejects(service.call(c.token, f.ea, { operation: 'identity' }), /disabled/);
+});
+
+test('name collisions, policy boundaries and invalid operation payloads fail before dispatch', async (t) => {
+  const f = await fixture(t);
+  const c = await f.service.enroll(token, f.ea);
+  f.rows.get(f.a.sessionId)!.name = 'reviewer';
+  const request = {
+    operation: 'ask' as const,
+    messageId: randomUUID(),
+    to: '@claude/reviewer',
+    message: 'work',
+    expiresAt: new Date(Date.now() + 60000).toISOString(),
+  };
+  await assert.rejects(f.service.call(c.token, f.ea, request), /ambiguous/);
+  await assert.rejects(
+    f.service.call(c.token, f.ea, {
+      ...request,
+      expiresAt: new Date(Date.now() + 5 * 3600000).toISOString(),
+    }),
+    /deadline/,
+  );
+  await assert.rejects(
+    f.service.call(c.token, f.ea, { ...request, origin: { session: f.b } }),
+    /input|Unrecognized/,
+  );
+  const restricted = new ConnectorService(f.hub, [{ ...f.profiles[0]!, callerId: 'limited' }], {
+    inspect: f.inspect,
+  });
+  await assert.rejects(restricted.enroll(token, f.ea), /identity|source|session/i);
+  const b = await restricted.enroll(token, f.eb);
+  await assert.rejects(restricted.call(b.token, f.eb, { ...request, to: f.a }), /authorized/);
+  assert.equal(f.adapter.calls.length, 0);
+});
+
+test('persistent connector bindings and hashed credentials survive a real SQLite reopen', async (t) => {
+  const dir = await mkdtemp('/tmp/ah-connector-store-');
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const path = join(dir, 'state.sqlite');
+  const f = await fixture(t, await openReceiptStore(path)),
+    c = await f.service.enroll(token, f.ea);
+  await f.hub.close();
+  const disk = await readFile(path);
+  assert(!disk.includes(c.token));
+  assert(!disk.includes(token));
+  const hub = new AgentHub([f.adapter], {
+    store: await openReceiptStore(path),
+    callers: [
+      {
+        id: 'agents',
+        grants: [{ harness: 'claude', instance: 'local', operations: ['read', 'send'] }],
+      },
+    ],
+  });
+  t.after(() => hub.close());
+  const service = new ConnectorService(hub, f.profiles, { inspect: f.inspect });
+  assert.deepEqual(await service.call(c.token, f.ea, { operation: 'identity' }), {
+    binding: c.binding,
+  });
+});
+
+test('identity owner mismatch, process changes and incomplete discovery fail closed', async (t) => {
+  const f = await fixture(t);
+  f.processes.get(10001)!.uid++;
+  await assert.rejects(f.service.enroll(token, f.ea), /owner/);
+  f.processes.get(10001)!.uid--;
+  let calls = 0;
+  const race = new ConnectorService(f.hub, f.profiles, {
+    inspect: async (pid) => {
+      const p = await f.inspect(pid);
+      if (++calls > 2) p.start += 'changed';
+      return p;
+    },
+  });
+  await assert.rejects(race.enroll(token, f.ea), /process changed/);
+  f.adapter.listSessions = async () => ({ data: [], nextCursor: 'repeat' });
+  await assert.rejects(f.service.enroll(token, f.ea), /discovery incomplete/);
+  let pages = 0;
+  f.adapter.listSessions = async () => ({ data: [], nextCursor: String(++pages) });
+  await assert.rejects(f.service.enroll(token, f.ea), /discovery incomplete/);
+  assert.equal(pages, 10);
+});
+
+test('disabled reply routes and corrupt or saturated registries are explicit failures', async (t) => {
+  const f = await fixture(t),
+    c = await f.service.enroll(token, f.ea);
+  const input = {
+    operation: 'ask',
+    messageId: randomUUID(),
+    to: f.b,
+    message: 'work',
+    expiresAt: new Date(Date.now() + 60000).toISOString(),
+  };
+  f.rows.get(f.b.sessionId)!.replyReadiness = {
+    state: 'missing_tool',
+    tool: 'missing',
+    listener: 'detached',
+    reason: 'test',
+  };
+  await assert.rejects(f.service.call(c.token, f.ea, input), /not ready/);
+  delete f.rows.get(f.b.sessionId)!.replyReadiness;
+  f.rows.get(f.b.sessionId)!.capabilities.send = [];
+  await assert.rejects(f.service.call(c.token, f.ea, input), /external messages/);
+  assert.throws(
+    () => new ConnectorService(f.hub, [{ ...f.profiles[0]!, callerId: '@owner' }]),
+    /restricted caller/,
+  );
+  assert.throws(() => new ConnectorService(f.hub, [f.profiles[0]!, f.profiles[0]!]), /unique/);
+  const state = f.hub.featureState('connectors'),
+    registry = state.get('registry')!;
+  const bindings = registry.bindings as Record<string, unknown>;
+  for (let i = 0; i < 4097; i++) bindings['entry' + i] = c.binding;
+  state.set('registry', registry);
+  await assert.rejects(f.service.enroll(token, f.ea), /capacity/);
+  state.set('registry', { version: 99 });
+  assert.throws(() => new ConnectorService(f.hub, f.profiles), /refusing recovery/);
+});

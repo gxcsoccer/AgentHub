@@ -21,6 +21,8 @@ Addresses are opaque in the core. Codex/Claude adapters validate their native UU
 
 Messages require `messageId` (UUID), `to`, `origin.name`, `delivery`, and `text`. Optional fields: `origin.session`, `correlationId`, `inReplyTo`, `replyTo`, `expiresAt` (default one hour), `hopCount` (0–8). Origin is claimed provenance. Unknown fields are not forwarded. The first correlated reply is optionally forwarded once; the forward has a separate receipt.
 
+This branch adds optional `messageKind: "request" | "result"` consistently across HTTP, SDK and MCP send_message. Omission preserves legacy request behavior. Results reject replyTo, omit reply instructions in both adapters, and reject business replies at adapter and core boundaries. Transport evidence such as accepted/held/received still applies; waiting for replied cannot establish that a result was read. Automatic reply forwarding always uses result, retaining the original correlation and deadline. Kind participates in idempotency fingerprints; explicit managed user_input rejects this field. This change is not yet published to npm.
+
 HTTP 202 means the API produced a receipt, not that the model processed the message. Inspect `status`:
 
 | Status            | Evidence                                                     |
@@ -54,3 +56,5 @@ The separate [Codex Bridge API](../vendor/codex-bridge/docs/API.md) retains all 
 At most four instances run concurrently, capped at the first 32. Each discovery reads only the first limit=10 page and reports hasMore explicitly. One instance failure does not skip others. Reports omit names, cwd, content, tokens and raw backend errors. CLI doctor defaults to 10 seconds per request. The fetch client accepts optional `timeoutMs` (integer 1..120000, default remains 70000), with no retries. This timeout applies to JSON requests; SSE continues to use its caller-provided signal. CLI exit codes 0/2/1 map to ok/warning/error; missing token files and invalid arguments use the existing stderr error path without creating credentials or starting a daemon.
 
 See [Extensions](EXTENSIONS.md) for caller grants, durable event semantics, full-text search and explicit managed-session endpoints.
+
+Claude/Codex enrollment, shared collaboration operations, Codex MCP connect and opt-in Claude CLI connect are implemented on this unreleased branch. See [Connector setup](CONNECTOR_SETUP.md) for configuration and limits. Claude CLI activation uses native messages and existing Bash permissions and can start a model turn; external MCP reload remains unavailable.

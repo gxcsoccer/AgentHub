@@ -33,7 +33,7 @@ Library setup passes policies in `new AgentHub(adapters, { callers })` and crede
 
 ## Durable events
 
-SQLite schema 2 migrates schema 1 in a transaction. Receipt changes and their `message.status` events commit together. Restart preserves event epoch and sequence; bounded retention remains 2,000 events / 4 MiB. Cursors older than retention or from a different store fail explicitly. The client owns its checkpoint and reconnect policy; no consumer-offset service or exactly-once guarantee is provided. Ephemeral hubs retain process-local events. Approval requests remain transient; missing native events during disconnection cannot be reconstructed from the log. Storage failures fail closed, and a disk failure may prevent writing a `storage.error` event too.
+This branch uses SQLite schema 3, transactionally upgrading schemas 1/2 to protect result termination semantics. Older binaries refuse the upgraded store; rolling back requires a pre-upgrade database copy. Legacy messages and their existing idempotency fingerprints are preserved. Receipt changes and their `message.status` events commit together. Restart preserves event epoch and sequence; bounded retention remains 2,000 events / 4 MiB. Cursors older than retention or from a different store fail explicitly. The client owns its checkpoint and reconnect policy; no consumer-offset service or exactly-once guarantee is provided. Ephemeral hubs retain process-local events. Approval requests remain transient; missing native events during disconnection cannot be reconstructed from the log. Storage failures fail closed, and a disk failure may prevent writing a `storage.error` event too.
 
 ## Full-text search
 

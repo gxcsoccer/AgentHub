@@ -105,6 +105,12 @@ test('reply forwarding is explicit and forwards at most once without creating a 
   assert.equal(adapter.calls.length, 2);
   assert.equal(adapter.calls[1]?.inReplyTo, message.messageId);
   assert.equal(adapter.calls[1]?.replyTo, undefined);
+  assert.equal(adapter.calls[1]?.messageKind, 'result');
+  const resultId = adapter.calls[1]!.messageId;
+  adapter.emit('update', { messageId: resultId, status: 'replied', reply: { text: 'thanks' } });
+  assert.notEqual(hub.receipt(resultId).status, 'replied');
+  assert.equal(hub.receipt(resultId).reply, undefined);
+  assert.equal(adapter.calls.length, 2);
   await hub.close();
 });
 test('closing the hub releases pending receipt waiters', async () => {
