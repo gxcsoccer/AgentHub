@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { parseArgs } from 'node:util';
-import { readFile } from 'node:fs/promises';
+import { readFile, mkdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join, resolve, dirname } from 'node:path';
 import { once } from 'node:events';
@@ -21,7 +21,11 @@ async function main() {
     allowPositionals: true,
     options: {
       help: { type: 'boolean', short: 'h' },
-      port: { type: 'string', default: '3211' },
+      port: { type: 'string' },
+      directory: { type: 'string' },
+      'doubao-cdp-port': { type: 'string' },
+      'confirm-host-name': { type: 'string' },
+      targets: { type: 'string' },
       url: { type: 'string' },
       config: { type: 'string' },
       cwd: { type: 'string' },
@@ -80,6 +84,15 @@ async function main() {
   agenthub agent --connector-profile FILE activate --activation-id UUID
   agenthub connect --harness codex|claude --session-id ID [--connector-profile FILE] [--wait-ms 30000]
                    [--retry-activation] (Claude CLI: explicitly replace an expired handshake)
+  agenthub setup targets --harness claude|codex [--cursor CURSOR]
+  agenthub setup init --directory NEW_DIR --targets FILE [--port 3214]
+  agenthub setup init --directory NEW_DIR --harness claude|codex --session-id UUID
+  agenthub setup serve|connect|doctor|disable|enable|uninstall --directory DIR
+  agenthub setup mcp --directory DIR (generated local host launcher)
+  agenthub setup host-install|host-disable|host-enable|host-remove --directory DIR --doubao-cdp-port PORT
+                   (experimental Doubao 2.35.15 API; requires an already enabled debug port)
+  agenthub setup host-forget --directory DIR --confirm-host-name NAME
+                   (offline recovery; host entry may remain and its record is retained)
 
 Clients: --url http://127.0.0.1:3211 --token-file FILE
 Environment: AGENTHUB_URL, AGENTHUB_TOKEN, AGENTHUB_TOKEN_FILE, AGENTHUB_STATE_FILE
@@ -89,6 +102,102 @@ attach-reply explicitly uses thread/resume after a loaded check; a concurrent un
 JSON goes to stdout. Agent-facing MCP never exposes attach or approval operations.
 doctor checks read-only prerequisites, not delivery: exit 0=ok, 2=warning, 1=error.
 No session is launched, resumed or interrupted implicitly.`);
+    return;
+  }
+  if (command === 'setup') {
+    const setup = await import('./setup.js');
+    const operation = positionals[1];
+    if (operation === 'targets') {
+      const harness = text(values.harness, '--harness', 64);
+      if (!['claude', 'codex'].includes(harness)) throw Error('Expected claude or codex');
+      const hub = await openLocalHub(
+        {
+          codex: harness === 'codex' ? [{ instance: 'local' }] : false,
+          claude: harness === 'claude' ? [{ instance: 'local' }] : false,
+        },
+        { stateFile: false },
+      );
+      try {
+        const adapter = hub.adapter({ harness, instance: 'local' });
+        const query = { limit: 100, ...(values.cursor ? { cursor: values.cursor } : {}) };
+        console.log(
+          JSON.stringify(await (adapter.listPeerSessions?.(query) ?? adapter.listSessions(query))),
+        );
+      } finally {
+        await hub.close();
+      }
+      return;
+    }
+    const directory = resolve(values.directory ?? join(homedir(), '.agenthub', 'doubao'));
+    if (operation === 'init') {
+      if (values.targets && (values.harness || values['session-id']))
+        throw Error('Choose --targets or one explicit harness/session');
+      const targets = values.targets
+        ? JSON.parse(await readFile(values.targets, 'utf8'))
+        : [{ harness: values.harness, instance: values.instance, sessionId: values['session-id'] }];
+      if (!values.directory) await mkdir(dirname(directory), { recursive: true, mode: 0o700 });
+      console.log(
+        JSON.stringify(
+          await setup.setupDoubao({ directory, targets, port: Number(values.port ?? 3214) }),
+        ),
+      );
+    } else if (operation === 'host-forget') {
+      console.log(
+        JSON.stringify(await setup.forgetDoubaoHost(directory, values['confirm-host-name'])),
+      );
+    } else if (
+      ['host-install', 'host-disable', 'host-enable', 'host-remove'].includes(operation ?? '')
+    ) {
+      if (!values['doubao-cdp-port'])
+        throw Error('--doubao-cdp-port is required for explicit host operations');
+      console.log(
+        JSON.stringify(
+          await setup.configureDoubaoHost(
+            directory,
+            operation!.slice(5) as 'install' | 'remove' | 'disable' | 'enable',
+            Number(values['doubao-cdp-port']),
+          ),
+        ),
+      );
+    } else if (operation === 'serve')
+      await setup.serveSetup(directory, (value) => console.log(JSON.stringify(value)));
+    else if (operation === 'mcp') await setup.setupMcp(directory);
+    else if (operation === 'disable' || operation === 'enable')
+      console.log(JSON.stringify(await setup.setSetupEnabled(directory, operation === 'enable')));
+    else if (operation === 'uninstall')
+      console.log(JSON.stringify(await setup.uninstallSetup(directory)));
+    else if (operation === 'doctor') {
+      const report = await setup.diagnoseSetup(directory);
+      console.log(JSON.stringify(report));
+      process.exitCode = report.status === 'error' ? 1 : 2;
+    } else if (operation === 'connect') {
+      const config = await setup.loadSetup(directory);
+      if (!config.enabled || config.uninstalled) throw Error('Setup is disabled or uninstalled');
+      const { privateRead } = await import('./access-file.js');
+      const client = new AgentHubClient({
+        baseUrl: 'http://127.0.0.1:' + config.port,
+        token: (await privateRead(join(directory, 'owner.token'))).trim(),
+      });
+      const targets = config.targets.filter(
+        (t) =>
+          (!values.harness || t.harness === values.harness) &&
+          (!values['session-id'] || t.sessionId === values['session-id']),
+      );
+      if (!targets.length) throw Error('Target is outside the generated allowlist');
+      const results = [];
+      for (const target of targets)
+        results.push(
+          await client.connectSession(target, {
+            clientProfilePath: join(directory, target.harness + '-client.json'),
+            waitMs: Number(values['wait-ms'] ?? 60000),
+          }),
+        );
+      console.log(JSON.stringify({ results }));
+      process.exitCode = results.some((r) => r.exitCode !== 0) ? 2 : 0;
+    } else
+      throw Error(
+        'Expected setup init, targets, serve, connect, doctor, disable, enable, uninstall, mcp, host-install, host-disable, host-enable, host-remove or host-forget',
+      );
     return;
   }
   if (
@@ -219,7 +328,7 @@ No session is launched, resumed or interrupted implicitly.`);
     process.once('SIGINT', stop);
     process.once('SIGTERM', stop);
     try {
-      app.server.listen(localPort(values.port), '127.0.0.1');
+      app.server.listen(localPort(values.port ?? '3211'), '127.0.0.1');
       await once(app.server, 'listening');
     } catch (error) {
       await app.close();

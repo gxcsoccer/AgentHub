@@ -1,6 +1,30 @@
 # Verification
 
+## PR #3 cleanup reporting and target discovery (2026-11-05)
+
+`npm run check` passes **250 tests** (181 core, 41 retained bridge, 28 script checks); coverage is **97.08% lines / 88.37% branches / 94.52% functions**. Five new process tests exercise the compiled `setup targets` CLI against an isolated Claude executable and Codex WebSocket/Unix-socket fixture: discovery, both pagination paths, empty results, malformed responses/cursors, invalid harnesses and unavailable backends. They verify read-only calls, connection closure and absence of generated configuration or state. Existing uninstall tests now assert all four Doubao cleanup states, separately unchecked native configuration and repeat-uninstall consistency, including compiled CLI output after verified host removal.
+
+`npm run test:package` also passes fresh installation, exports, binaries, HTTP/SQLite and installed setup CLI checks. These are local CLI/fixture checks. No real harness sessions or Doubao UI were contacted; the earlier real host evidence remains at `9c37af1`. Private logs are under `.local/verification/pr3-followups-*`.
+
+## PR #3 recovery fixes (2026-11-05)
+
+`npm run check` passes **245 tests** (176 core, 41 retained bridge, 28 script checks); coverage is **96.30% lines / 87.58% branches / 94.12% functions**. All ten new regression tests failed before the fix and pass afterward. They cover UUID validation before file creation; cleanup with unrelated 401/HTML/non-Hub JSON services; explicit unknown ownership for a hung port with credential preservation; offline cleanup before creation; and exact-name `host-forget` after rejected creation, a lost response, manual entry deletion or a host upgrade.
+
+The host error cases use a fake API; port cases use local HTTP servers, and recovery exercises the compiled CLI in separate processes. These checks do not rerun the real Doubao/model acceptance below, which was completed at the earlier PR head `9c37af1`. No working sessions were contacted during the fixes. The package-installation check also passes with the updated CLI. Private logs remain under `.local/verification/pr3-fix-*`.
+
+## Doubao host and unified setup (2026-11-05, development branch)
+
+`npm run check` passes **235 tests** (166 core, 41 retained bridge, 28 script checks). Coverage: **96.56% lines / 87.34% branches / 94.08% functions**. Package installation also checks the installed setup CLI. New process tests cover the generated MCP launcher, disable/restart, owned SIGKILL recovery, refusal to control a legacy daemon, private-file checks and preservation of edited/user files. Host API tests cover unique registration, lost-create recovery without duplication, uncertain-outcome retention and removal verification.
+
+Actual macOS **Doubao Work 2.35.15** host acceptance passed **17 checks**: the 15 isolated backend/MCP checks plus two fixed requests sent by Doubao and matching Claude/Codex replies visibly displayed in the test conversation. The host also displayed duplicate-request results; backend deduplication has independent store assertions. Loading used **插件 · 技能 · 伙伴 → 添加 → 新建自定义连接器 → STDIO**. The temporary connector was removed through the UI; owned Claude/Codex processes, test thread and temporary credentials were cleaned. Native versions: Claude **2.1.318**, Codex **0.166.0**. Private evidence: `.local/verification/doubao-host-live.json` and excluded UI screenshots.
+
+A separate production `setup host-*` CLI run passed **five live API checks**: create and exact launcher readback; repeated installation reusing the ID; disabled/enabled readback; removal preserving all prior local connector IDs; generated setup uninstall. Private report: `.local/verification/doubao-host-api-live.json`. The experiment was informed by [dbtrace's earlier connector research](https://github.com/gxcsoccer/dbtrace/blob/main/docs/research/doubao/mcp-connector.md). Current behavior required observed desktop device context for listing and **`connector/disconnect` for removal**. The old generic delete route returned success without removing this entry; it is not used. Cookies and authentication query values are not exported or persisted by the implementation.
+
+These are separate acceptance scopes: the API lifecycle run does not prove a model tool call, and registration returns `hostLoadingVerified: false`. Busy host/user interleaving, actual host disconnect/recovery, proactive wake-up, native Doubao conversation identity and other platforms remain unverified or unimplemented. Manual native Claude/Codex MCP configuration cleanup remains outside generated-file uninstall. The older CLI-only run passed 13 checks and direct MCP-only run 15; neither alone establishes host acceptance. See [setup and reproduction](DOUBAO.md).
+
 ## 0.2.0 release verification (2026-11-05)
+
+The exact verified 0.2.0 tarball was published to npm, its registry integrity matched, and a fresh tarball installation passed CLI help verification. The [GitHub release](https://github.com/gxcsoccer/AgentHub/releases/tag/v0.2.0) is public. These development-branch setup/Doubao changes are not part of 0.2.0.
 
 `npm run check` passes 215 tests (151 unified, 41 retained Codex Bridge, 23 runner-safety); coverage is 96.99% lines, 88.83% branches and 94.93% functions. Package installation verifies five exports, both binaries, version metadata, HTTP, SQLite and empty event cursor recovery. The 0.2.0 Codex MCP / Claude CLI isolated run passes all eight checks, including both request/reply/result directions, loaded peer discovery and cleanup. Native versions remain macOS Codex 0.166.0 / Claude 2.1.318. No working sessions are used. Private reports are kept under ignored `.local/verification/release-0.2.0-*`.
 

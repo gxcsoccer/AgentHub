@@ -1,0 +1,18 @@
+{
+  "connectors": {
+    "agenthub-local": {
+      "install": {
+        "default": ["npm install -g @gxcsoccer/agenthub@0.2.0"]
+      },
+      "status": {
+        "default": [
+          "env -u AGENTHUB_TOKEN agenthub instances --url http://127.0.0.1:3214 --token-file \"$HOME/.agenthub/doubao/caller.token\""
+        ],
+        "win32": [
+          "node -e \"console.error('AgentHub Doubao local integration currently requires macOS or Linux');process.exit(1)\""
+        ]
+      },
+      "statusMatchRegex": "^\\{\"data\":\\[.*\"eventCursor\":"
+    }
+  }
+}

@@ -15,7 +15,7 @@
 
 [验收说明](ACCEPTANCE.zh-CN.md)提供复现命令；[验证文档](VERIFICATION.zh-CN.md)区分实际模型、协议测试进程、合成负载和历史证据；[扩展说明](EXTENSIONS.zh-CN.md)定义接口边界。
 
-本次排除 Windows 补齐：原生模型验收、回调回复和私有持久状态仍待完成。豆包运行时、Agent OpenAPI 和 MCP Events adapter 继续 pending，[调研](DOUBAO.zh-CN.md)和示例不代表已完成运行时验收。
+本次排除 Windows 补齐：原生模型验收、回调回复和私有持久状态仍待完成。豆包已转入实施：当前开发分支实现无需插件的 MCP 配置生成、可选本地 CLI 插件，并完成 stdio MCP 到真实 Claude/Codex 的隔离验收；豆包 2.35.15 已完成真实宿主收发验收及 5 项自动登记/移除检查。统一 setup 命令管理生成配置和 Hub；原生 MCP 配置移除仍需手工完成。忙碌交错/宿主断线、原生身份、主动唤醒、Agent OpenAPI 和 MCP Events 仍待完成。[接入说明与边界](DOUBAO.zh-CN.md)。
 
 持久消费组、全量历史索引、权限热更新属于按需求增强。更长期生产观测和其他原生版本需要新增证据。已有 Codex 会话的原生动态回复工具仍受创建时注册限制；0.2.0 的连接器通过 App Server MCP reload 接入，并已完成真实双向验收。AgentHub 不通过隐式恢复来模拟工具安装。
 
@@ -37,4 +37,4 @@ Claude 生产连接器已通过 9 项隔离真实检查，配置与边界见[接
 
 Codex connect 及两端共享工具新增 6 项真实检查通过：已有 Codex 根会话安装激活、无需模型轮次的只读身份握手、复用配置且保留权限、双向请求/回复/结果、结果终止。未使用动态回复工具或 thread/resume。
 
-Claude CLI connect 新增 10 项真实检查，Claude CLI 与 Codex MCP 组合另通过 7 项。无 Bash 的会话收到消息并回报后仍保持未核验；只有目标进程链中的实际 CLI 调用能够完成激活。此路径会使用模型和目标原有权限，未安装新 MCP。剩余重点是 profile 自动生成、统一卸载/停用、只读诊断与故障/容量完善。
+Claude CLI connect 新增 10 项真实检查，Claude CLI 与 Codex MCP 组合另通过 7 项。无 Bash 的会话收到消息并回报后仍保持未核验；只有目标进程链中的实际 CLI 调用能够完成激活。此路径会使用模型和目标原有权限，未安装新 MCP。豆包 setup 工作流已补配置生成、受管理 Hub 的卸载/停用、只读诊断和显式宿主登记/移除；通用原生 MCP 配置移除及更广的故障/容量验收仍待完成。

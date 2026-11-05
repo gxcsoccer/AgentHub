@@ -111,12 +111,13 @@ agenthub attach-reply --harness codex --session-id SESSION_ID --accept-resume-ra
 ## 豆包与 MCP
 
 ```sh
-agenthub mcp --origin-name 'Doubao Work'
+env -u AGENTHUB_TOKEN agenthub mcp --origin-name 'Doubao Work' \
+  --url http://127.0.0.1:3214 --token-file /ABS/PRIVATE/caller.token
 ```
 
 MCP 使用官方 SDK，提供会话发现、详情、历史、消息提交和状态查询、全文检索共七个工具。面向 agent 的工具不开放审批、恢复或中断操作。[配置模板](examples/mcp.json)。
 
-本地 CLI/MCP 已由官方 MCP 客户端测试；**尚未在豆包运行时完成验收**。豆包 Agent OpenAPI、MCP Events 目前只有调研与设计，没有实现。[接入说明](docs/DOUBAO.zh-CN.md)。
+[豆包接入](docs/DOUBAO.zh-CN.md)提供目标选择、私有配置生成、Hub 生命周期和可选 CLI 插件。开发分支新增 `agenthub setup`，并支持通过显式 CDP 端口自动登记豆包 2.35.15 连接器。真实豆包 STDIO 对话已显示 Claude/Codex 回复；自动创建/移除另通过 5 项检查。这些 setup 命令需要开发分支构建，尚不在 npm 0.2.0 中。豆包原生身份与主动唤醒仍未实现。
 
 ## 验证与边界
 

@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, readFile, appendFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, appendFile, rm, realpath } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
+import { Client } from '@modelcontextprotocol/client';
+import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
+import { setupDoubao } from './setup-doubao.mjs';
 import { setTimeout as delay } from 'node:timers/promises';
 import {
   AgentHub,
@@ -22,33 +25,47 @@ import {
   codexModelTurn,
 } from './live-processes.mjs';
 if (!process.argv.includes('--run')) {
-  console.log('No live actions. Add --run for isolated Codex/Claude connector acceptance.');
+  console.log(
+    'No live actions. Add --run for isolated Codex/Claude connector acceptance; --doubao-host also waits for independent Doubao UI observation.',
+  );
   process.exit(0);
 }
-const claudeCli = process.argv.includes('--claude-cli');
+const doubaoCli = process.argv.includes('--doubao-cli');
+const doubaoHost = process.argv.includes('--doubao-host');
+const doubaoMcp = process.argv.includes('--doubao-mcp') || doubaoHost;
+const doubao = doubaoCli || doubaoMcp;
+const claudeCli = process.argv.includes('--claude-cli') || doubao;
 const root = await mkdtemp('/tmp/ah-life-'),
   work = join(root, 'work'),
   cli = resolve('dist/src/cli.js'),
   reportPath = resolve(
-    claudeCli
-      ? '.local/verification/connector-codex-claude-cli-live.json'
-      : '.local/verification/connector-codex-live.json',
+    doubaoHost
+      ? '.local/verification/doubao-host-live.json'
+      : doubaoMcp
+        ? '.local/verification/doubao-mcp-backends-live.json'
+        : doubaoCli
+          ? '.local/verification/doubao-cli-backends-live.json'
+          : claudeCli
+            ? '.local/verification/connector-codex-claude-cli-live.json'
+            : '.local/verification/connector-codex-live.json',
   );
 await mkdir(work);
 const report = {
   startedAt: new Date().toISOString(),
   checks: [],
   cleanup: [],
-  scope:
-    'Owned independent App Server and fresh Claude PTY only; no native dynamic reply tool or resume.',
+  scope: doubaoHost
+    ? 'Owned independent App Server and fresh Claude PTY, plus independent Doubao UI request/reply observation; no busy/disconnect/user-interleaving host claim.'
+    : 'Owned independent App Server and fresh Claude PTY only; no native dynamic reply tool or resume. --doubao-cli / --doubao-mcp test the external CLI / stdio MCP workflow, not the Doubao host runtime.',
 };
 const owner = randomUUID() + randomUUID(),
   codexToken = randomUUID() + randomUUID(),
   claudeToken = randomUUID() + randomUUID();
+const doubaoToken = randomUUID() + randomUUID();
 const env = cleanEnv();
 for (const key of ['CLAUDE_CODE_SESSION_ID', 'CLAUDE_CODE_PLUGIN_DIRS', 'CLAUDE_CONFIG_DIR'])
   delete env[key];
-let backend, claude, hub, app, store, service, url;
+let backend, claude, hub, app, store, service, url, mcpClient;
 const owned = new Set(),
   nativeCalls = [];
 const check = (name, detail = {}) => {
@@ -162,6 +179,23 @@ try {
     {
       store,
       callers: [
+        ...(doubao
+          ? [
+              {
+                id: 'doubao-plugin',
+                grants: [
+                  {
+                    harness: 'codex',
+                    instance: 'local',
+                    sessions: [thread.id],
+                    operations: ['read', 'send'],
+                  },
+                  // discover() is restricted to the exact owned Claude PID and test workspace.
+                  { harness: 'claude', instance: 'local', operations: ['read', 'send'] },
+                ],
+              },
+            ]
+          : []),
         {
           id: 'agents',
           grants: [
@@ -194,7 +228,12 @@ try {
       enrollmentToken: claudeToken,
     },
   ]);
-  app = createHubServer({ hub, token: owner, connectors: service });
+  app = createHubServer({
+    hub,
+    token: owner,
+    connectors: service,
+    ...(doubao ? { callers: [{ id: 'doubao-plugin', token: doubaoToken }] } : {}),
+  });
   app.server.listen(0, '127.0.0.1');
   await once(app.server, 'listening');
   url = 'http://127.0.0.1:' + app.server.address().port;
@@ -406,6 +445,211 @@ try {
   );
   assert(!nativeCalls.some((c) => c.method === 'thread/resume'));
   check('result_termination_and_no_resume_or_dynamic_reply_tool');
+  if (doubao) {
+    const tokenFile = join(root, 'doubao-caller.token');
+    await writeFile(tokenFile, doubaoToken, { mode: 0o600 });
+    const cliEnv = { ...env };
+    delete cliEnv.AGENTHUB_TOKEN;
+    const call = async (args) =>
+      JSON.parse(
+        (
+          await exec(process.execPath, [cli, ...args, '--url', url, '--token-file', tokenFile], {
+            env: cliEnv,
+            timeout: 40000,
+          })
+        ).stdout,
+      );
+    let launchMcp;
+    const mcpCall = async (name, args) => {
+      const value = await mcpClient.callTool({ name, arguments: args });
+      if (value.isError) throw Error(JSON.stringify(value.content));
+      return value.structuredContent.result;
+    };
+    if (doubaoMcp) {
+      const directory = join(await realpath(root), 'direct-mcp');
+      await setupDoubao({
+        directory,
+        targets: [
+          { harness: 'codex', instance: 'local', sessionId: thread.id },
+          { harness: 'claude', instance: 'local', sessionId: sid },
+        ],
+        port: app.server.address().port,
+        cliPath: cli,
+      });
+      // Use the fixture Hub's scoped caller; retain the generated private path and argv.
+      await writeFile(join(directory, 'caller.token'), doubaoToken, { mode: 0o600 });
+      const config = JSON.parse(await readFile(join(directory, 'mcp.json'), 'utf8'));
+      launchMcp = async () => {
+        mcpClient = new Client({ name: 'doubao-direct-mcp-live-test', version: '1' });
+        await mcpClient.connect(
+          new StdioClientTransport({
+            ...config.mcpServers.agenthub,
+            env: { ...env, AGENTHUB_TOKEN: owner },
+            stderr: 'pipe',
+          }),
+        );
+      };
+      await launchMcp();
+      assert.equal((await mcpClient.listTools()).tools.length, 7);
+      for (const [harness, id] of [
+        ['codex', thread.id],
+        ['claude', sid],
+      ]) {
+        const sessions = await mcpCall('list_sessions', { harness });
+        assert.equal(sessions.data.length, 1);
+        assert.equal(sessions.data[0].address.sessionId, id);
+      }
+      check('doubao_mcp_generated_config_scoped_discovery_with_inherited_owner');
+    }
+    const send = (input, path) => {
+      if (!doubaoMcp) return call(['send', '--message-file', path]);
+      const { origin, ...args } = input;
+      return mcpCall('send_message', args);
+    };
+    const status = (messageId) =>
+      doubaoMcp
+        ? mcpCall('get_message_status', { messageId, waitMs: 1000 })
+        : call(['status', '--message-id', messageId, '--wait-ms', '1000']);
+    let lastInput;
+    for (const [harness, sessionId, delivery] of [
+      ['claude', sid, 'peer_message'],
+      ['codex', thread.id, 'tool_output'],
+    ]) {
+      await idle();
+      await until(
+        async () =>
+          (await hub.getSession({ harness: 'codex', instance: 'local', sessionId: thread.id }))
+            .status === 'idle',
+        'Codex idle before external CLI request',
+        60000,
+      );
+      const input = {
+        messageId: randomUUID(),
+        messageKind: 'request',
+        to: { harness, instance: 'local', sessionId },
+        origin: { name: 'Doubao Work via AgentHub' },
+        delivery,
+        text: 'DOUBAO_CLI_TO_' + harness.toUpperCase() + '_TEST',
+        expiresAt: new Date(Date.now() + 180000).toISOString(),
+      };
+      const path = join(root, 'doubao-' + harness + '-request.json');
+      await writeFile(path, JSON.stringify(input), { mode: 0o600 });
+      await send(input, path);
+      const receipt = await until(
+        async () => {
+          const current = await status(input.messageId);
+          if (['failed', 'rejected', 'unknown'].includes(current.status))
+            throw Error(JSON.stringify(current));
+          return current.status === 'replied' ? current : undefined;
+        },
+        harness + ' external CLI reply',
+        90000,
+      );
+      assert.equal(receipt.reply.text, 'ANSWER_TEST:' + input.text);
+      assert.equal(receipt.forwardedMessageId, undefined);
+      assert.equal(request(input.text).envelope.origin.session, undefined);
+      check(
+        'doubao_' +
+          (doubaoMcp ? 'mcp' : 'cli') +
+          '_to_' +
+          harness +
+          '_native_reply_without_claimed_source_session',
+      );
+      const count = store.load().length;
+      assert.equal((await send(input, path)).status, 'replied');
+      assert.equal(store.load().length, count);
+      check('doubao_' + (doubaoMcp ? 'mcp' : 'cli') + '_' + harness + '_duplicate_reuses_reply');
+      lastInput = input;
+    }
+    await assert.rejects(call(['connections']));
+    check('doubao_scoped_cli_cannot_use_owner_connections');
+    if (doubaoMcp) {
+      await mcpClient.close();
+      await launchMcp();
+      assert.equal((await status(lastInput.messageId)).status, 'replied');
+      const count = store.load().length;
+      assert.equal((await send(lastInput)).status, 'replied');
+      await assert.rejects(
+        mcpCall('send_message', {
+          messageId: randomUUID(),
+          messageKind: 'request',
+          to: { harness: 'codex', instance: 'local', sessionId: randomUUID() },
+          delivery: 'tool_output',
+          text: 'DENIED_TARGET_TEST',
+        }),
+      );
+      assert.equal(store.load().length, count);
+      check('doubao_mcp_reconnect_preserves_reply_dedup_and_target_denial');
+    }
+    if (doubaoHost) {
+      await mcpClient.close();
+      mcpClient = undefined;
+      const requests = [
+        { harness: 'claude', instance: 'local', sessionId: sid },
+        { harness: 'codex', instance: 'local', sessionId: thread.id },
+      ].map((to) => ({
+        messageId: randomUUID(),
+        messageKind: 'request',
+        to,
+        delivery: to.harness === 'claude' ? 'peer_message' : 'tool_output',
+        text: 'DOUBAO_HOST_' + to.harness.toUpperCase() + '_' + randomUUID(),
+        expiresAt: new Date(Date.now() + 900000).toISOString(),
+      }));
+      const observedFile = join(root, 'host-observed.json');
+      const hostLauncherPath = join(await realpath(root), 'host-mcp');
+      const nativeConfig = JSON.parse(await readFile(join(root, 'direct-mcp', 'mcp.json'), 'utf8'))
+        .mcpServers.agenthub;
+      await writeFile(
+        hostLauncherPath,
+        '#!/bin/sh\nexec ' + [nativeConfig.command, ...nativeConfig.args].map(q).join(' ') + '\n',
+        { flag: 'wx', mode: 0o700 },
+      );
+      const observation = {
+        hostLauncherPath,
+        mcpConfigPath: join(await realpath(root), 'direct-mcp', 'mcp.json'),
+        requests,
+        observedFile,
+        note: 'Only independent Doubao UI observation may complete this fixture. Times out after 15 minutes.',
+      };
+      await mkdir(resolve('.local/verification'), { recursive: true });
+      await writeFile(
+        resolve('.local/verification/doubao-host-pending.json'),
+        JSON.stringify(observation, null, 2),
+        { mode: 0o600 },
+      );
+      console.log(
+        JSON.stringify({
+          hostPending: true,
+          observation: '.local/verification/doubao-host-pending.json',
+        }),
+      );
+      await until(
+        async () => {
+          const proof = await readFile(observedFile, 'utf8')
+            .then(JSON.parse)
+            .catch(() => undefined);
+          if (!proof) return false;
+          assert.equal(proof.host, 'Doubao Work');
+          assert.equal(proof.repliesVisible, true);
+          assert.deepEqual(
+            proof.messageIds,
+            requests.map((r) => r.messageId),
+          );
+          for (const input of requests) {
+            const stored = store.load().find((r) => r.envelope.messageId === input.messageId);
+            assert.equal(stored?.envelope.text, input.text);
+            assert.equal(stored?.envelope.origin.session, undefined);
+            assert.equal(stored?.receipt.reply?.text, 'ANSWER_TEST:' + input.text);
+            check('doubao_host_request_and_visible_reply_' + input.to.harness);
+          }
+          report.hostObservation = proof;
+          return true;
+        },
+        'independent Doubao host UI observation',
+        900000,
+      );
+    }
+  }
   report.outcome = 'passed';
 } catch (error) {
   report.outcome = 'failed';
@@ -416,13 +660,18 @@ try {
   await mkdir(resolve('.local/verification'), { recursive: true });
   await writeFile(
     resolve(
-      claudeCli
-        ? '.local/verification/connector-codex-claude-cli-terminal.txt'
-        : '.local/verification/connector-codex-claude-terminal.txt',
+      doubaoMcp
+        ? '.local/verification/doubao-mcp-backends-terminal.txt'
+        : doubaoCli
+          ? '.local/verification/doubao-cli-backends-terminal.txt'
+          : claudeCli
+            ? '.local/verification/connector-codex-claude-cli-terminal.txt'
+            : '.local/verification/connector-codex-claude-terminal.txt',
     ),
     await terminal(),
     { mode: 0o600 },
   );
+  if (mcpClient) await mcpClient.close().catch((e) => report.cleanup.push({ error: e.message }));
   if (claude)
     await stopOwned(claude)
       .then(() => report.cleanup.push({ claudeStopped: true }))
