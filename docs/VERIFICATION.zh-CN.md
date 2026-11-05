@@ -219,3 +219,11 @@ Node 26.12.1 上 `npm run check` 通过 97 项 AgentHub、41 项原 Bridge、七
 macOS 真实隔离验收通过 Claude CLI 的 10 项（Claude 2.1.318），包括 Bash 不可用、重启、等待期间用户插话和 clear 隔离；Claude CLI / Codex MCP 双向验收通过 7 项（Codex 0.166.0）。均确认自有进程退出、测试 thread 归档和临时目录/认证清理。私有报告：`.local/verification/pr2-fix-connector-claude-cli-live.json` 与 `pr2-fix-connector-codex-claude-cli-live.json`。
 
 首次跨 harness 尝试在模型调用工具前停止：早期 Codex `thread/read` 返回空的 interrupted turn，且没有完成时间。原 runner 将任何非 inProgress 快照视为终态。现在先等待匹配的原生 `turn/completed` 通知，再读取 completed 历史；通知可先于启动响应，真实中断/超时仍报错且不重发。新增两个 runner 测试覆盖该竞态及监听清理。首次失败和自有资源清理证据保留于私有 `pr2-fix-first-connector-codex-claude-cli-live.json`；新的隔离运行通过全部 7 项。本次未重跑 Windows、相邻版本矩阵和长时合成负载。
+
+## 连接器后续意见收尾（2026-11-05）
+
+三条非阻塞意见均已处理。Codex 协作发现改为分页查询已加载会话，保留普通历史列表和按会话授权的读取边界。修复前只读抽样中，历史列表前 100 条有 99 条 notLoaded，已加载列表仅 1 条；这不是全部历史数量统计。测试使用 1,100 条历史会话，以及分页已加载根会话、子会话和卸载竞态，验证协作发现、别名发送均无需扫描历史。
+
+激活回收优先未验证的过期记录，只清理本次接入所需数量；替换同一 key 不回收其他记录。测试验证正常会话保持已验证状态，防重发规则仍成立。凭据记录保留 60 秒的过期分类宽限期；HTTP 测试在请求发出后跨过到期边界，并由另一登记写入注册表，验证仅续期一次、消息 ID/期限不变且只提交一次。过期凭据始终无效，所有者撤销优先，宽限期结束后正常清理。修复前有六项回归断言失败，修复后全部通过。
+
+`npm run check` 通过 214 项（AgentHub 150、保留的 bridge 41、runner 安全测试 23）；源码覆盖率为行 96.99%、分支 88.82%、函数 94.93%。打包安装再次通过五个导出、两个 CLI、HTTP、SQLite 和事件游标恢复。macOS Claude 2.1.318 / Codex 0.166.0 新建隔离验收通过 8 项，在 CLI/MCP 双向收发基础上新增原生已加载会话发现检查。自有进程退出、测试 thread 归档、临时目录和复制认证清理均已确认。私有报告：`.local/verification/pr2-closeout-connector-codex-claude-cli-live.json`。大目录与容量边界属于确定性 fixture 覆盖；本次未重复独立的 Claude-only 10 项验收、相邻版本矩阵、Windows 真实接入或长时负载。

@@ -126,6 +126,32 @@ export class CodexAdapter extends EventEmitter implements Adapter {
       nextCursor: typeof result.nextCursor === 'string' ? result.nextCursor : null,
     };
   }
+  async listPeerSessions(query: PageQuery = {}) {
+    const q = pageQuery(query);
+    const result = await this.request('thread/loaded/list', {
+      limit: q.limit,
+      ...(q.cursor ? { cursor: q.cursor } : {}),
+    });
+    if (
+      !Array.isArray(result.data) ||
+      result.data.length > q.limit! ||
+      result.data.some((id) => typeof id !== 'string')
+    )
+      throw new HubError('backend_protocol', 'Invalid Codex loaded session page', 502);
+    const data = await Promise.all(
+      result.data.map((id) =>
+        this.getSession({
+          harness: this.harness,
+          instance: this.instance,
+          sessionId: sessionId(id),
+        }),
+      ),
+    );
+    return {
+      data,
+      nextCursor: typeof result.nextCursor === 'string' ? result.nextCursor : null,
+    };
+  }
   async getSession(address: SessionAddress): Promise<SessionInfo> {
     const thread = object(
       (

@@ -370,6 +370,39 @@ test('credential refresh is bounded, coalesced and never retries uncertain deliv
   assert.equal(calls, 6, 'network uncertainty is never replayed');
 });
 
+test('a credential expiring in flight survives unrelated registry writes long enough for one safe refresh', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.now() });
+  const f = await setup(t),
+    evidence = { pid: 10001, startupSessionId: f.a.sessionId },
+    operations: unknown[] = [];
+  let crossExpiry = false,
+    enrollments = 0;
+  const client = new ConnectorClient({
+    baseUrl: f.baseUrl,
+    enrollmentToken: token,
+    evidence,
+    fetch: async (url, init) => {
+      if (String(url).endsWith('/enroll')) enrollments++;
+      if (String(url).endsWith('/call')) {
+        operations.push(JSON.parse(String(init?.body)).operation);
+        if (crossExpiry) {
+          crossExpiry = false;
+          t.mock.timers.tick(2);
+          await f.service.enroll(token, { pid: 10002, startupSessionId: f.b.sessionId });
+        }
+      }
+      return fetch(url, init);
+    },
+  });
+  await client.identity();
+  t.mock.timers.tick(86400000 - 1);
+  crossExpiry = true;
+  await client.ask({ to: f.b, message: 'Review once' });
+  assert.equal(enrollments, 2);
+  assert.deepEqual(operations[1], operations[2]);
+  assert.equal(f.adapter.calls.length, 1);
+});
+
 test('serve CLI loads connector profiles with restricted access and rejects credential reuse', async (t) => {
   const dir = await mkdtemp('/tmp/ah-connector-serve-');
   t.after(() => rm(dir, { recursive: true, force: true }));

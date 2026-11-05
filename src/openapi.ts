@@ -304,7 +304,7 @@ export const openApi = {
       post: {
         operationId: 'connectorCall',
         description:
-          'Process credential only. Source and reply route are derived from current native identity and existing grants. list_peers returns peers plus per-instance gaps; aliases only query their harness and require complete discovery. activate verifies local identity independently of peer discovery. ask expiresAt must be within four hours; late replies fail with request_expired. credential_expired is a pre-dispatch 401 and permits one reenrollment and retry of the exact operation. Other failures never automatically replay writes. Result messages cannot be replied to.',
+          'Process credential only. Source and reply route are derived from current native identity and existing grants. list_peers returns peers plus per-instance gaps; Codex discovery uses loaded roots instead of historical threads. Aliases only query their harness and require complete discovery. activate verifies local identity independently of peer discovery. ask expiresAt must be within four hours; late replies fail with request_expired. credential_expired is a pre-dispatch 401 and permits one reenrollment and retry of the exact operation; expired credential records retain this classification for 60 seconds without extending validity. Other failures never automatically replay writes. Result messages cannot be replied to.',
         requestBody: body(
           strictObject({ evidence: connectorEvidence, operation: connectorOperation }),
         ),

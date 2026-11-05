@@ -14,7 +14,7 @@ import { ConnectorService } from '../src/connectors/service.js';
 import { FakeRpc, testToken } from './helpers.js';
 import type { SessionInfo } from '../src/types.js';
 
-async function fixture(t: test.TestContext) {
+async function fixture(t: test.TestContext, scoped = false) {
   const a = randomUUID(),
     b = randomUUID(),
     connectionId = randomUUID(),
@@ -54,7 +54,14 @@ async function fixture(t: test.TestContext) {
       callers: [
         {
           id: 'agents',
-          grants: [{ harness: 'codex', instance: 'local', operations: ['read', 'send'] }],
+          grants: [
+            {
+              harness: 'codex',
+              instance: 'local',
+              operations: ['read', 'send'],
+              ...(scoped ? { sessions: [a] } : {}),
+            },
+          ],
         },
       ],
     });
@@ -101,6 +108,85 @@ async function fixture(t: test.TestContext) {
     setChild: () => (child = true),
   };
 }
+test('Codex peer discovery pages loaded roots independently of historical threads and resolves aliases', async (t) => {
+  const f = await fixture(t),
+    child = randomUUID(),
+    unloaded = randomUUID();
+  const history = Array.from({ length: 1100 }, () => randomUUID());
+  f.rpc.handlers.set('thread/list', (p) => {
+    const offset = Number(p.cursor ?? 0),
+      end = offset + Number(p.limit ?? 100);
+    return {
+      data: history.slice(offset, end).map((id) => ({ id, status: { type: 'notLoaded' } })),
+      nextCursor: end < history.length ? String(end) : null,
+    };
+  });
+  f.rpc.handlers.set('thread/loaded/list', (p) =>
+    p.cursor
+      ? { data: [f.b, unloaded], nextCursor: null }
+      : { data: [f.a, child], nextCursor: 'second' },
+  );
+  f.rpc.handlers.set('thread/read', (p) => ({
+    thread: {
+      id: p.threadId,
+      name: p.threadId === f.b ? 'reviewer' : 'source',
+      status: { type: p.threadId === unloaded ? 'notLoaded' : 'idle' },
+      canAcceptDirectInput: p.threadId !== child,
+      parentThreadId: p.threadId === child ? f.a : null,
+    },
+  }));
+  const c = await f.service.enroll(f.token, f.evidence());
+  const listing = (await f.service.call(c.token, f.evidence(), { operation: 'list_peers' })) as {
+    peers: SessionInfo[];
+    gaps: unknown[];
+  };
+  assert.deepEqual(
+    listing.peers.map((s) => s.address.sessionId),
+    [f.a, f.b],
+  );
+  assert.deepEqual(listing.gaps, []);
+  await f.service.call(c.token, f.evidence(), {
+    operation: 'ask',
+    messageId: randomUUID(),
+    to: '@codex/reviewer',
+    message: 'Review',
+    expiresAt: new Date(Date.now() + 60000).toISOString(),
+  });
+  assert.equal(f.rpc.calls.filter((c) => c.method === 'turn/start').length, 1);
+  assert(!f.rpc.calls.some((c) => c.method === 'thread/list'), 'collaboration never scans history');
+  const historical = await f.hub.listSessions(
+    { harness: 'codex', instance: 'local' },
+    { limit: 2 },
+    'agents',
+  );
+  assert.equal(historical.data.length, 2);
+  assert(
+    historical.data.every((s) => s.status === 'notLoaded'),
+    'normal history listing remains unchanged',
+  );
+  assert(
+    !f.rpc.calls.some((c) =>
+      ['thread/resume', 'thread/start', 'config/mcpServer/reload'].includes(c.method),
+    ),
+  );
+});
+
+test('Codex peer discovery retains session allowlists without reading unauthorized metadata', async (t) => {
+  const f = await fixture(t, true),
+    c = await f.service.enroll(f.token, f.evidence());
+  f.rpc.calls.length = 0;
+  const listing = (await f.service.call(c.token, f.evidence(), { operation: 'list_peers' })) as {
+    peers: SessionInfo[];
+  };
+  assert.deepEqual(
+    listing.peers.map((s) => s.address.sessionId),
+    [f.a],
+  );
+  assert(
+    f.rpc.calls.filter((c) => c.method === 'thread/read').every((c) => c.params.threadId === f.a),
+  );
+  assert(!f.rpc.calls.some((c) => c.method === 'thread/list'));
+});
 test('Codex binds per-call metadata to the exact native MCP connection and rechecks each operation', async (t) => {
   const f = await fixture(t),
     enrolled = await f.service.enroll(f.token, f.evidence());

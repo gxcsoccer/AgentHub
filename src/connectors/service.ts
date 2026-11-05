@@ -174,8 +174,10 @@ export class ConnectorService {
       );
   }
   private save(s: State) {
+    // Preserve the pre-dispatch expiry classification for requests already in
+    // flight. Authorization still rejects immediately at expires.
     for (const [key, c] of Object.entries(s.credentials))
-      if (c.expires < Date.now()) delete s.credentials[key];
+      if (c.expires + 60000 <= Date.now()) delete s.credentials[key];
     for (const rows of [s.bindings, s.credentials, s.hooks])
       if (Object.keys(rows).length > 4096)
         throw new HubError('connector_capacity', 'Connector registry capacity reached', 429);
@@ -250,17 +252,20 @@ export class ConnectorService {
         409,
       );
   }
-  private async sessions(p: ConnectorProfile, scope: { harness: string; instance: string }) {
+  private async sessions(
+    p: ConnectorProfile,
+    scope: { harness: string; instance: string },
+    peers = false,
+  ) {
     const rows: SessionInfo[] = [];
+    const list = peers
+      ? this.hub.listPeerSessions.bind(this.hub)
+      : this.hub.listSessions.bind(this.hub);
     let cursor: string | undefined;
     let pages = 0;
     const seen = new Set<string>();
     do {
-      const page = await this.hub.listSessions(
-        scope,
-        { limit: 100, ...(cursor ? { cursor } : {}) },
-        p.callerId,
-      );
+      const page = await list(scope, { limit: 100, ...(cursor ? { cursor } : {}) }, p.callerId);
       rows.push(...page.data);
       cursor = page.nextCursor ?? undefined;
       if (cursor && (++pages >= 10 || rows.length >= 1000 || seen.has(cursor)))
@@ -567,7 +572,7 @@ export class ConnectorService {
       if (!this.hub.access.allows(p.callerId, 'read', scope)) continue;
       let rows: SessionInfo[];
       try {
-        rows = await this.sessions(p, scope);
+        rows = await this.sessions(p, scope, true);
       } catch (error) {
         if (
           error instanceof HubError &&

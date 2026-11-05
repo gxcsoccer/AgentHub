@@ -23,6 +23,7 @@ import type {
   PageQuery,
   Receipt,
   SessionAddress,
+  SessionInfo,
   Update,
 } from './types.js';
 
@@ -261,11 +262,42 @@ export class AgentHub {
     query: PageQuery = {},
     callerId = OWNER,
   ) {
+    return this.listSessionPage(a, query, callerId, false);
+  }
+  /** Connector discovery uses live adapter inventory, retaining the same read grants. */
+  async listPeerSessions(
+    a: Pick<SessionAddress, 'harness' | 'instance'>,
+    query: PageQuery = {},
+    callerId = OWNER,
+  ) {
+    return this.listSessionPage(a, query, callerId, true);
+  }
+  private async listSessionPage(
+    a: Pick<SessionAddress, 'harness' | 'instance'>,
+    query: PageQuery,
+    callerId: string,
+    peers: boolean,
+  ) {
     await this.ready();
     const ids = this.access.sessions(callerId, 'read', a),
       q = pageQuery(query);
-    if (ids === null) return this.adapter(a).listSessions(q);
-    const binding = fingerprint([callerId, a, ids, q.search ?? '']);
+    const available = (row: SessionInfo) =>
+      !peers ||
+      (row.status !== 'notLoaded' &&
+        row.capabilities.send.some((delivery) => delivery !== 'user_input'));
+    const matches = (row: SessionInfo) =>
+      !q.search ||
+      `${row.name ?? ''}\n${row.cwd ?? ''}\n${row.address.sessionId}`
+        .toLocaleLowerCase()
+        .includes(q.search.toLocaleLowerCase());
+    if (ids === null) {
+      const adapter = this.adapter(a);
+      const page = await (peers && adapter.listPeerSessions
+        ? adapter.listPeerSessions(q)
+        : adapter.listSessions(q));
+      return peers ? { ...page, data: page.data.filter(available).filter(matches) } : page;
+    }
+    const binding = fingerprint([callerId, a, ids, q.search ?? '', ...(peers ? ['peers'] : [])]);
     let offset = 0;
     if (q.cursor) {
       let c: Json;
@@ -296,13 +328,8 @@ export class AgentHub {
     );
     const data = rows
       .filter((r) => r !== undefined)
-      .filter(
-        (r) =>
-          !q.search ||
-          `${r.name ?? ''}\n${r.cwd ?? ''}\n${r.address.sessionId}`
-            .toLocaleLowerCase()
-            .includes(q.search.toLocaleLowerCase()),
-      );
+      .filter(available)
+      .filter(matches);
     const next = offset + selected.length;
     return {
       data,

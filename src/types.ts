@@ -103,6 +103,8 @@ export interface Adapter extends EventEmitter {
   readonly harness: string;
   readonly instance: string;
   listSessions(query?: PageQuery): Promise<Page<SessionInfo>>;
+  /** Optional live discovery for collaboration, separate from the historical session list. */
+  listPeerSessions?(query?: PageQuery): Promise<Page<SessionInfo>>;
   getSession(address: SessionAddress): Promise<SessionInfo>;
   probeConnector?(address: SessionAddress, serverName: string): Promise<void>;
   connectorSession?(

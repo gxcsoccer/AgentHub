@@ -183,13 +183,19 @@ export class CliActivation {
           'An older activation may have been collected; inspect the target and use --retry-activation to explicitly send a new handshake',
           409,
         );
-      if (Object.keys(registry.records).length >= 256) {
-        for (const [oldKey, old] of Object.entries(registry.records)) {
-          if (old.expires <= Date.now()) {
-            retired(registry, oldKey, true);
-            delete registry.records[oldKey];
-          }
-        }
+      const needed = Math.max(
+        0,
+        Object.keys(registry.records).length + (registry.records[key] ? 0 : 1) - 256,
+      );
+      const candidates = Object.entries(registry.records)
+        .filter(([oldKey, old]) => oldKey !== key && old.expires <= Date.now())
+        .sort(
+          ([, a], [, b]) =>
+            Number(Boolean(a.verifiedAt)) - Number(Boolean(b.verifiedAt)) || a.expires - b.expires,
+        );
+      for (const [oldKey] of candidates.slice(0, needed)) {
+        retired(registry, oldKey, true);
+        delete registry.records[oldKey];
       }
       record = {
         id: randomUUID(),

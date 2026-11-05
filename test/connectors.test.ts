@@ -305,6 +305,33 @@ test('credentials survive service restart but not PID reuse, owner rotation or p
   await assert.rejects(service.call(c.token, f.ea, { operation: 'identity' }), /disabled/);
 });
 
+test('expiry grace preserves error classification without extending validity or bypassing revocation', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.now() });
+  const f = await fixture(t),
+    c = await f.service.enroll(token, f.ea);
+  t.mock.timers.tick(86400000 + 1);
+  await f.service.enroll(token, f.eb);
+  const restarted = new ConnectorService(f.hub, f.profiles, { inspect: f.inspect });
+  await assert.rejects(
+    restarted.call(c.token, f.ea, { operation: 'identity' }),
+    (e: unknown) => e instanceof HubError && e.code === 'credential_expired',
+  );
+  const revoked = new ConnectorService(f.hub, [{ ...f.profiles[0]!, epoch: 1 }], {
+    inspect: f.inspect,
+  });
+  await assert.rejects(
+    revoked.call(c.token, f.ea, { operation: 'identity' }),
+    (e: unknown) => e instanceof HubError && e.code === 'credential_revoked',
+  );
+  t.mock.timers.tick(59999);
+  await f.service.enroll(token, f.eb);
+  await assert.rejects(
+    restarted.call(c.token, f.ea, { operation: 'identity' }),
+    (e: unknown) => e instanceof HubError && e.code === 'invalid_credential',
+  );
+  assert.equal(f.adapter.calls.length, 0);
+});
+
 test('name collisions, policy boundaries and invalid operation payloads fail before dispatch', async (t) => {
   const f = await fixture(t);
   const c = await f.service.enroll(token, f.ea);

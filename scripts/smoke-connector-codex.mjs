@@ -216,6 +216,15 @@ try {
   assert.equal((await service.connections()).bindings.length, 1);
   assert.equal(nativeCalls.filter((c) => c.method === 'turn/start').length, 0);
   check('existing_codex_thread_activated_and_bound_without_model_turn_or_resume');
+  const discoveryStart = nativeCalls.length;
+  const livePeers = await hub.listPeerSessions({ harness: 'codex', instance: 'local' });
+  assert.deepEqual(
+    livePeers.data.map((peer) => peer.address.sessionId),
+    [thread.id],
+  );
+  assert(nativeCalls.slice(discoveryStart).some((call) => call.method === 'thread/loaded/list'));
+  assert(!nativeCalls.slice(discoveryStart).some((call) => call.method === 'thread/list'));
+  check('codex_live_peer_discovery_uses_loaded_roots_without_history_scan');
   // Test owner preauthorizes only these three fixture tools; the installer never writes permissions.
   const { layers } = await rpc.request('config/read', { includeLayers: true });
   const layer = layers.find((l) => l.name.type === 'user');

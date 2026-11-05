@@ -435,7 +435,11 @@ test('activation collection frees expired records and retains replay protection 
   state.set('registry', registry);
   await f.service.connect({ ...input, address: f.b }, 3211);
   const collected = state.get('registry')!;
-  assert.equal(Object.keys(collected.records as object).length, 1);
+  assert.equal(
+    Object.keys(collected.records as object).length,
+    256,
+    'only one expired record is collected',
+  );
   assert.equal(String(collected.retired).length, 131072);
   const reopened = new ConnectorService(f.hub, [f.profile], { inspect: f.inspect });
   await assert.rejects(reopened.connect(input, 3211), /--retry-activation/);
@@ -452,6 +456,65 @@ test('activation collection frees expired records and retains replay protection 
   assert.equal(f.adapter.calls.length, 3, 'even a saturated filter never silently replays');
   await reopened.connect({ ...input, retryActivation: true }, 3211);
   assert.equal(f.adapter.calls.length, 4);
+});
+
+test('activation collection prioritizes unverified records and preserves live verified readiness', async (t) => {
+  const f = await fixture(t),
+    input = { address: f.a, clientProfilePath: f.path };
+  const activation = await f.service.connect(input, 3211),
+    c = await f.service.enroll(f.token, f.ea);
+  await f.service.call(c.token, f.ea, {
+    operation: 'activate',
+    activationId: activation.activationId,
+  });
+  const state = f.hub.featureState('connector-cli-activation'),
+    registry = state.get('registry')!;
+  const records = registry.records as Record<
+    string,
+    { id: string; expires: number; verifiedAt?: string }
+  >;
+  const key = Object.keys(records)[0]!,
+    original = records[key]!;
+  original.expires = Date.now() - 10000;
+  for (let i = 1; i < 256; i++) records['old-' + i] = { ...original, id: randomUUID() };
+  delete records['old-255']!.verifiedAt;
+  records['old-255']!.expires = Date.now() - 1;
+  state.set('registry', registry);
+  await f.service.connect({ ...input, address: f.b }, 3211);
+  const after = state.get('registry')!.records as typeof records;
+  assert.equal(Object.keys(after).length, 256);
+  assert.equal(after['old-255'], undefined, 'unverified expiration is preferred even when newer');
+  assert.equal(after[key]?.id, activation.activationId);
+  assert.equal((await f.service.connect(input, 3211)).phase, 'ready');
+  assert.equal(f.adapter.calls.length, 2, 'verified reconnect does not wake the model');
+});
+
+test('retry replaces its own record at capacity without collecting other verified activations', async (t) => {
+  const f = await fixture(t),
+    input = { address: f.a, clientProfilePath: f.path };
+  await f.service.connect(input, 3211);
+  const state = f.hub.featureState('connector-cli-activation'),
+    registry = state.get('registry')!;
+  const records = registry.records as Record<
+    string,
+    { id: string; expires: number; verifiedAt?: string }
+  >;
+  const key = Object.keys(records)[0]!,
+    original = records[key]!;
+  original.expires = Date.now() - 1;
+  for (let i = 1; i < 256; i++)
+    records['verified-' + i] = {
+      ...original,
+      id: randomUUID(),
+      verifiedAt: new Date().toISOString(),
+    };
+  state.set('registry', registry);
+  const retry = await f.service.connect({ ...input, retryActivation: true }, 3211);
+  const after = state.get('registry')!.records as typeof records;
+  assert.equal(Object.keys(after).length, 256);
+  assert.notEqual(retry.activationId, original.id);
+  assert.equal(after['verified-1']?.id, records['verified-1']!.id);
+  assert.equal(state.get('registry')!.retired, undefined, 'replacement needs no collection');
 });
 
 test('later failed receipts stop activation waiting and nonexpired records retain the capacity bound', async (t) => {
