@@ -630,6 +630,8 @@ test('a source disconnected during ask is refused while its target profile stays
   ]);
   const service = f.service;
   const c = await service.enroll(token, f.ea);
+  // A binding from another profile must not stand in for the revoked one.
+  await service.enroll('second-token-'.repeat(4), f.ea);
   const getSession = f.adapter.getSession.bind(f.adapter);
   let release!: () => void;
   const gate = new Promise<void>((resolve) => (release = resolve));

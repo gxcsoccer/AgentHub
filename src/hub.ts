@@ -55,7 +55,7 @@ export class AgentHub {
   // Newest event sequence among removed messages. listMessages reports a gap
   // when a caller's cursor is older, because those changes can't be replayed.
   private removedThrough = 0;
-  private deliveryGuards: ((envelope: Envelope, callerId?: string) => void)[] = [];
+  private deliveryGuards: ((envelope: Envelope) => void)[] = [];
   constructor(
     adapters: Adapter[],
     private readonly options: {
@@ -184,7 +184,7 @@ export class AgentHub {
     this.healthy();
   }
   /** Trusted in-process hook. A throw refuses delivery after every earlier check. */
-  guardDelivery(guard: (envelope: Envelope, callerId?: string) => void) {
+  guardDelivery(guard: (envelope: Envelope) => void) {
     this.deliveryGuards.push(guard);
   }
   /** Trusted in-process extension state, never exposed through the public API. */
@@ -376,14 +376,15 @@ export class AgentHub {
     this.access.require(callerId, 'read', valid, valid.sessionId);
     return searchHistory(this.adapter(valid), valid, query, callerId);
   }
-  async send(value: MessageInput, callerId = OWNER): Promise<Receipt> {
+  /** beforeDelivery runs with the delivery guards, so a throw refuses this message. */
+  async send(value: MessageInput, callerId = OWNER, beforeDelivery?: () => void): Promise<Receipt> {
     if (value.delivery === 'user_input')
       throw new HubError(
         'explicit_prompt_required',
         'Use the explicit prompt operation for user_input',
         422,
       );
-    return this.sendInput(value, undefined, callerId);
+    return this.sendInput(value, undefined, callerId, beforeDelivery);
   }
   async prompt(value: MessageInput, callerId = OWNER) {
     if (value.delivery !== 'user_input' || value.replyTo)
@@ -431,7 +432,12 @@ export class AgentHub {
       );
     return adapter.attachReplyRoute(valid, options);
   }
-  private async sendInput(value: MessageInput, parent?: Entry, callerId = OWNER): Promise<Receipt> {
+  private async sendInput(
+    value: MessageInput,
+    parent?: Entry,
+    callerId = OWNER,
+    beforeDelivery?: () => void,
+  ): Promise<Receipt> {
     await this.ready();
     const input = messageInput(value);
     this.access.require(
@@ -495,7 +501,7 @@ export class AgentHub {
       this.entries.delete(input.messageId);
       throw error;
     }
-    entry.promise = this.submit(adapter, entry).finally(() => {
+    entry.promise = this.submit(adapter, entry, beforeDelivery).finally(() => {
       if (!this.closed) {
         entry.phase = 'settled';
         entry.expires = Date.now() + (this.options.receiptTtlMs ?? 86400000);
@@ -504,7 +510,11 @@ export class AgentHub {
     });
     return entry.promise;
   }
-  private async submit(adapter: Adapter, entry: Entry): Promise<Receipt> {
+  private async submit(
+    adapter: Adapter,
+    entry: Entry,
+    beforeDelivery?: () => void,
+  ): Promise<Receipt> {
     try {
       const session = await adapter.getSession(entry.envelope.to);
       if (this.closed) throw new HubError('closed', 'Hub is closed', 503);
@@ -517,7 +527,8 @@ export class AgentHub {
       if (Date.parse(entry.envelope.expiresAt) <= Date.now())
         throw new HubError('expired', 'Message expired', 409);
       // No await may follow this before adapter.send.
-      for (const guard of this.deliveryGuards) guard(entry.envelope, entry.callerId);
+      for (const guard of this.deliveryGuards) guard(entry.envelope);
+      beforeDelivery?.();
     } catch (error) {
       this.apply(adapter, {
         messageId: entry.envelope.messageId,

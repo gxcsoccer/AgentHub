@@ -185,7 +185,7 @@ export class ConnectorService {
     this.state = hub.featureState('connectors');
     this.activation = new CliActivation(hub, this.inspect);
     this.read();
-    hub.guardDelivery((envelope, callerId) => this.assertDeliverable(envelope, callerId));
+    hub.guardDelivery((envelope) => this.assertDeliverable(envelope));
   }
   private read(): State {
     const raw = this.state.get('registry');
@@ -268,17 +268,21 @@ export class ConnectorService {
     return !this.options.connectedPeersOnly || this.connectedAddresses(s).has(addressKey(address));
   }
   // Runs at the delivery boundary: a disconnect can complete during earlier awaits.
-  private assertDeliverable(envelope: Envelope, callerId?: string) {
-    if (!envelope.origin.session) return;
-    const s = this.read();
-    if (!this.peerAllowed(envelope.to, s))
+  private assertDeliverable(envelope: Envelope) {
+    if (envelope.origin.session && !this.peerAllowed(envelope.to))
       throw new HubError('peer_not_connected', 'Target session is not connected', 409);
-    // Connector requests always come from a bound session. Disconnecting the
-    // session or its profile removes that binding.
+  }
+  // Checks the credential this request was authorized with. Another binding of the
+  // same session proves nothing about this profile's grants.
+  private assertRequestAuthorized(token: string, p: ConnectorProfile, source: SessionAddress) {
+    const s = this.read(),
+      c = s.credentials[fingerprint(token)];
     if (
-      envelope.messageKind === 'request' &&
-      this.profiles.some((p) => p.callerId === callerId) &&
-      !this.connectedAddresses(s).has(addressKey(envelope.origin.session))
+      !c ||
+      c.revision !== revision(p) ||
+      p.enabled === false ||
+      s.disabledProfiles?.[p.id] ||
+      s.disconnected?.[addressKey(source)]
     )
       throw new HubError('connector_disconnected', 'Session was disconnected by the owner', 403);
   }
@@ -628,6 +632,7 @@ export class ConnectorService {
         expiresAt: op.expiresAt,
       },
       p.callerId,
+      () => this.assertRequestAuthorized(token, p, binding.address),
     );
     return {
       request: receipt.messageId,
