@@ -1,4 +1,5 @@
 import { randomBytes, randomUUID } from 'node:crypto';
+import { isAbsolute } from 'node:path';
 import * as z from 'zod/v4';
 import { AgentHub } from '../hub.js';
 import { OWNER } from '../access.js';
@@ -53,6 +54,15 @@ const profileSchema = z.strictObject({
   mcpServerName: z
     .string()
     .regex(/^[A-Za-z0-9_-]{1,64}$/)
+    .optional(),
+  mcpCommand: z
+    .strictObject({
+      command: z
+        .string()
+        .max(4096)
+        .refine((command) => isAbsolute(command), 'mcpCommand.command must be absolute'),
+      args: z.array(z.string().max(4096)).max(64),
+    })
     .optional(),
 });
 const bindingSchema = z.strictObject({
@@ -165,6 +175,8 @@ export class ConnectorService {
     this.profiles = profiles.map((p) => parse(profileSchema, p));
     if (this.profiles.some((p) => p.transport === 'cli' && p.harness !== 'claude'))
       throw new HubError('invalid_profile', 'CLI transport is only supported for Claude');
+    if (this.profiles.some((p) => p.mcpCommand && p.harness !== 'codex'))
+      throw new HubError('invalid_profile', 'mcpCommand is only supported for Codex');
     const ids = new Set<string>(),
       tokens = new Set<string>();
     for (const p of this.profiles) {

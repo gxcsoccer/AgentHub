@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Add connector profile option `mcpCommand` for Codex, so a host whose install path can change can register a stable launcher. `connect` writes it and compares against it. Without it, behavior is unchanged.
+
 ## 0.4.0 — 2026-11-06
 
 - Skip the user config write when a matching Codex MCP entry is already effective through an override layer. Conflicting overrides are still refused.

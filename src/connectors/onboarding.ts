@@ -99,15 +99,19 @@ export async function connectSession(
   if (!adapter.installConnector || !adapter.connectorSession)
     throw new HubError('unsupported', 'Adapter cannot install and verify a native connector', 501);
   const serverName = profile.mcpServerName ?? 'agenthub';
-  const installation = await adapter.installConnector(input.address, serverName, {
-    command: process.execPath,
-    args: [
-      fileURLToPath(new URL('../cli.js', import.meta.url)),
-      'mcp',
-      '--connector-profile',
-      resolve(input.clientProfilePath),
-    ],
-  });
+  const installation = await adapter.installConnector(
+    input.address,
+    serverName,
+    profile.mcpCommand ?? {
+      command: process.execPath,
+      args: [
+        fileURLToPath(new URL('../cli.js', import.meta.url)),
+        'mcp',
+        '--connector-profile',
+        resolve(input.clientProfilePath),
+      ],
+    },
+  );
   const deadline = Date.now() + input.waitMs;
   let ready = false,
     reason = 'Native connector has not connected',

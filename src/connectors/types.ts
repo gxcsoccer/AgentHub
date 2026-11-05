@@ -29,6 +29,13 @@ export interface ConnectorProfile {
   epoch?: number;
   enabled?: boolean;
   mcpServerName?: string;
+  /**
+   * Codex only. The MCP command written to the user's config and compared on
+   * later connects, for hosts whose own install path can change. It replaces the
+   * default command entirely and must exec the helper, because identity checks
+   * require Codex to be the helper's direct parent.
+   */
+  mcpCommand?: { command: string; args: string[] };
   transport?: 'mcp' | 'cli';
 }
 export interface ConnectorBinding {

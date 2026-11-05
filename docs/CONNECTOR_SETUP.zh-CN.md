@@ -194,6 +194,8 @@ npm run smoke:connector:codex -- --run
 
 自动生成 profile/选择目标、安装器卸载/停用、手工绑定兜底、启动顺序恢复和更多宿主/故障兼容仍待完善。`connections` 仍是历史绑定清单；本次接入的核验结果以 `connect` 报告为准。
 
+安装路径可能变化的宿主，可以在 Codex profile 上设置 `mcpCommand`，例如 `{ "command": "/ABS/launcher", "args": [] }`。`connect` 会写入这条命令，而不是当前的 Node 和 CLI 路径，之后的 connect 也以它为比较基准。它会完全替换默认命令，所以启动器要自己运行 `agenthub mcp --connector-profile FILE`。请使用 `exec`，因为身份校验要求 Codex 是 helper 的直接父进程。命令必须是绝对路径。修改它会改变 profile revision，会话需要重新连接。
+
 ## 已有 Claude CLI：通过原生消息激活
 
 所有者在 Hub 的 Claude profile 中显式选择 `"transport": "cli"`。省略时仍为 MCP 路径，外部自动 reload 继续返回 `automatic_activation_unavailable`。CLI 路径复用受限 caller grants 和私有 client profile，不需要安装 skill、MCP 或生命周期 hook：
