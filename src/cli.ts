@@ -5,7 +5,7 @@ import { homedir } from 'node:os';
 import { join, resolve, dirname } from 'node:path';
 import { once } from 'node:events';
 import { loadToken, localPort } from '../vendor/codex-bridge/src/config.js';
-import { AgentHubClient } from './client.js';
+import { AgentHubClient, hubUnreachable } from './client.js';
 import { createHubServer } from './server.js';
 import { loadAccessFile } from './access-file.js';
 import { loadConnectorProfiles, loadConnectorClientProfile } from './connectors/config.js';
@@ -278,15 +278,22 @@ No session is launched, resumed or interrupted implicitly.`);
         token: profile.enrollmentToken,
         timeoutMs: 5000,
       });
-      console.log(
-        JSON.stringify(
-          await client.connectorHook({
-            pid: process.pid,
-            event: event.hook_event_name,
-            sessionId: text(event.session_id, 'session_id', 64),
-          }),
-        ),
-      );
+      try {
+        console.log(
+          JSON.stringify(
+            await client.connectorHook({
+              pid: process.pid,
+              event: event.hook_event_name,
+              sessionId: text(event.session_id, 'session_id', 64),
+            }),
+          ),
+        );
+      } catch (error) {
+        if (!hubUnreachable(error)) throw error;
+        // A stopped Hub is normal, and a nonzero exit shows an error at every session
+        // start. The MCP helper waits for the Hub on its own, but this event is lost.
+        console.error(`AgentHub Hub unreachable, skipped ${event.hook_event_name}`);
+      }
     }
     return;
   }

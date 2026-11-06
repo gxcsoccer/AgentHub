@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
-import { AgentHubClient, HubApiError } from '../client.js';
+import { AgentHubClient, HubApiError, hubUnreachable } from '../client.js';
 import { HubError, object, uuid } from '../validation.js';
 import type { SessionAddress } from '../types.js';
 import type { ConnectorEvidence } from './types.js';
@@ -83,9 +83,7 @@ export class ConnectorClient {
         return undefined;
       } catch (error) {
         const hubUnavailable =
-          error instanceof HubApiError
-            ? error.status >= 500
-            : error instanceof TypeError || (error as Error)?.name === 'TimeoutError';
+          error instanceof HubApiError ? error.status >= 500 : hubUnreachable(error);
         const pending = error instanceof HubApiError && error.code === 'identity_pending';
         if (!hubUnavailable && (!pending || Date.now() - started + wait >= pendingMs))
           return error instanceof HubApiError ? error.code : 'connector_request_failed';
