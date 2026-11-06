@@ -1,18 +1,15 @@
 # Changelog
 
-## Unreleased
+## 0.4.3 — 2026-11-06
 
 - Accept Claude CLI 2.x from 2.1.317 by default, instead of an exact version list that broke at every auto-update. A new major version is still refused, and `supportsNativeVersion` still sets a stricter policy.
 - Add session metadata `nativeVersionValidated`. `doctor` reports a warning, `unvalidated_version`, for a version that is allowed but untested. If such a version changed the private native protocol, a message can stay at `transport_written` with no error.
 - Add Claude CLI 2.1.319 to the tested versions.
-
-## 0.4.3 — 2026-11-06
-
 - `connector-hook` exits 0 when it can't reach the Hub, with a note on stderr, so a stopped Hub no longer shows a hook error at every Claude session start. A Hub refusal or bad input still exits nonzero. The event is still lost. After `/clear` during an outage, tool calls return `identity_pending` until a new `SessionStart` reaches the Hub, for example from another `/clear` or a restarted session.
 
 Connector state is unchanged from 0.4.2.
 
-本版让 `connector-hook` 在连不上 Hub 时退出 0 并写 stderr，Hub 停止时 Claude 启动界面不再报错。Hub 明确拒绝或配置错误时仍退出非 0。事件仍会丢失：停机期间 `/clear` 后，需要新的 `SessionStart` 送达 Hub 才能恢复。连接器状态与 0.4.2 相同。
+本版默认接受 2.x 且不低于 2.1.317 的 Claude CLI，Claude 自动升级不再中断 peer 收发。未实测版本标记为未验证，`doctor` 报警告；如果后续版本改了私有协议，消息可能停在 `transport_written` 且没有报错。2.1.319 已实测。本版还让 `connector-hook` 在连不上 Hub 时退出 0 并写 stderr，Hub 停止时 Claude 启动界面不再报错。Hub 明确拒绝或配置错误时仍退出非 0。事件仍会丢失：停机期间 `/clear` 后，需要新的 `SessionStart` 送达 Hub 才能恢复。连接器状态与 0.4.2 相同。
 
 ## 0.4.2 — 2026-11-06
 

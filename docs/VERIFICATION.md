@@ -1,18 +1,14 @@
 # Verification
 
-## Claude version policy (unreleased, 2026-11-06)
-
-With real Claude Code 2.1.319 on macOS and the default policy, `npm run smoke:connector -- --run` passed 10 of 10 and `npm run smoke:isolated -- --run` finished passed. That covers native delivery, replies and `/clear` on 2.1.319, so it joins the tested versions.
-
-`2.2.x` and later `2.1.x` releases are allowed but haven't been run. Whether a later release keeps the private protocol isn't known until it runs.
-
 ## 0.4.3 release checks (2026-11-06)
 
-PR #15 is merged. With the package and OpenAPI version set to 0.4.3, `npm run check` passes **280 tests** (211 core, 41 retained bridge, 28 script checks); coverage is **96.97% lines / 88.47% branches / 94.83% functions**. `npm run test:package` passes.
+PRs #15 and #17 are merged. With the package and OpenAPI version set to 0.4.3, `npm run check` passes **281 tests** (212 core, 41 retained bridge, 28 script checks); coverage is **96.97% lines / 88.58% branches / 94.84% functions**. `npm run test:package` passes.
 
-`npm run smoke:connector -- --run` passed 10 of 10 with Claude Code pinned to 2.1.318. The same run failed with 2.1.319, which auto-updated on this machine that day: `ask_agent` returned `Peer name is missing or ambiguous`. 2.1.319 isn't in the validated version list, so that session doesn't offer `peer_message` by default. The startup binding checks had passed. 2.1.319 isn't validated.
+At `b3b9044`, with real Claude Code 2.1.319 on macOS and the default policy, `npm run smoke:connector -- --run` passed 10 of 10 and `npm run smoke:isolated -- --run` finished passed. That covers native delivery, replies and `/clear` on 2.1.319, so it joins the tested versions.
 
-The startup screen wasn't checked in a real Claude session with a stopped Hub.
+Claude auto-updated to 2.1.319 on this machine during the release. Before PR #17, the same connector smoke failed on it: `ask_agent` returned `Peer name is missing or ambiguous`, because the version wasn't accepted and the session didn't offer `peer_message`.
+
+`2.2.x` and later `2.1.x` releases are allowed but haven't been run. Whether a later release keeps the private protocol isn't known until it runs. The startup screen wasn't checked in a real Claude session with a stopped Hub.
 
 ## 0.4.2 release checks (2026-11-06)
 
