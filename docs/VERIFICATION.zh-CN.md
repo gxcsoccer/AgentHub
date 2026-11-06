@@ -1,8 +1,10 @@
 # 验证说明
 
-## Claude 启动绑定（未发布，2026-11-06）
+## 0.4.2 发布检查（2026-11-06）
 
-`npm run smoke:connector -- --run` 在 macOS 和 Claude Code 2.1.318 上通过全部 10 项。两个真实交互会话在调用工具前完成绑定；`/clear` 后，会话同样在调用工具前绑定到新 UUID。本次运行使用 `--strict-mcp-config`。
+PR #13 已合并。包和 OpenAPI 版本设为 0.4.2 后，`npm run check` 通过 **279 项测试**（核心 210、保留 Bridge 41、脚本 28），覆盖率为**行 97.01%、分支 88.75%、函数 94.82%**。`npm run test:package` 通过。
+
+在 `f5f9aac` 上，`npm run smoke:connector -- --run` 在 macOS 和 Claude Code 2.1.318 上通过全部 10 项。两个真实交互会话在调用工具前完成绑定；`/clear` 后，会话同样在调用工具前绑定到新 UUID。本次运行使用 `--strict-mcp-config`。
 
 Hub 晚于会话启动、原生目录迟到这两种情况只有假 fetch 覆盖。会话 resume、不带 `--strict-mcp-config` 加载 MCP、helper 的 24 小时凭证过期后再 `/clear` 都没有测试。最后一种情况下，按代码新 UUID 要到下一次工具调用才绑定。
 
