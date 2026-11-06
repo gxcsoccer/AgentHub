@@ -104,7 +104,7 @@ agenthub serve --config /ABS/hub.json --access-file /ABS/access.json \
 }
 ```
 
-helper 启动时自行登记，不占用模型轮次。Hub 不可用时持续重试；原生目录尚未列出会话时最多重试两分钟。因此安装范围内的每个会话启动后都会绑定，可用 `disconnect` 移除。启动绑定中止时由首次工具调用登记。`/clear` 后，若该宿主的 helper 持有未过期凭证，`SessionStart` hook 会绑定新 UUID，否则等下一次工具调用。每次调用都重新核对原生 UUID。需要直接子进程关系、启动环境 `CLAUDE_CODE_SESSION_ID` 和原生目录 PID 一致。macOS 使用 `python3 -I` 调用 libproc 获取微秒级进程启动身份；Linux 使用 `/proc` 的启动 tick、boot ID 和有效 UID。Linux 目前只有确定性测试，真实模型验收仅覆盖 macOS + Claude 2.1.318。其他平台或证据不足返回未就绪。
+helper 启动时自行登记，不占用模型轮次。Hub 不可用时持续重试；原生目录尚未列出会话时最多重试两分钟。因此安装范围内的每个会话启动后都会绑定，可用 `disconnect` 移除。启动绑定中止时由首次工具调用登记。`/clear` 后，若该宿主的 helper 仍在运行且持有未过期凭证，`SessionStart` hook 会绑定新 UUID，否则等下一次工具调用。每次调用都重新核对原生 UUID。需要直接子进程关系、启动环境 `CLAUDE_CODE_SESSION_ID` 和原生目录 PID 一致。macOS 使用 `python3 -I` 调用 libproc 获取微秒级进程启动身份；Linux 使用 `/proc` 的启动 tick、boot ID 和有效 UID。Linux 目前只有确定性测试，真实模型验收仅覆盖 macOS + Claude 2.1.318。其他平台或证据不足返回未就绪。
 
 ## 模型工具与诊断
 

@@ -580,7 +580,10 @@ test('serve CLI loads connector profiles with restricted access and rejects cred
   );
 });
 
-test('startup binding waits out the Hub and native directory, then stops', async () => {
+test('startup binding waits out the Hub and native directory, then stops', async (t) => {
+  // Retry timers are unref'd, and the fake fetch holds nothing else open.
+  const alive = setInterval(() => {}, 1000);
+  t.after(() => clearInterval(alive));
   const startup = (fake: typeof fetch, extra = {}) =>
     new ConnectorClient({
       baseUrl: 'http://localhost:3211',

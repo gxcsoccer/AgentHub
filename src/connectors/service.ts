@@ -531,27 +531,39 @@ export class ConnectorService {
       seenAt: new Date().toISOString(),
     };
     this.save(s);
-    if (e.event === 'SessionStart') this.rebindHost(p, pair.host, e.sessionId);
+    if (e.event === 'SessionStart') await this.rebindHost(p, pair.host, e.sessionId);
     return { accepted: true, stale: false };
   }
   /**
    * `/clear` keeps the MCP helper, which can't see the new UUID until a tool call.
-   * A live credential shows that helper runs on this host. Without one the hook binds
-   * nothing: a session whose MCP never loaded could be asked but could not reply.
+   * A binding records that a helper was verified, so this needs the credential's own
+   * process still running under this host. A hook proves nothing about MCP on its own.
    */
-  private rebindHost(p: ConnectorProfile, host: ProcessIdentity, sessionId: string) {
-    const s = this.read(),
-      address = { harness: p.harness, instance: p.instance, sessionId };
-    const helper = Object.values(s.credentials).some(
-      (c) =>
-        !('harness' in c) &&
-        c.transport !== 'cli' &&
-        c.profileId === p.id &&
-        c.revision === revision(p) &&
-        c.expires > Date.now() &&
-        same(c.host, host),
-    );
-    if (helper && !s.disconnected?.[addressKey(address)]) this.binding(p, address);
+  private async rebindHost(p: ConnectorProfile, host: ProcessIdentity, sessionId: string) {
+    const address = { harness: p.harness, instance: p.instance, sessionId };
+    const candidates = Object.entries(this.read().credentials)
+      .filter(
+        ([, c]) =>
+          !('harness' in c) &&
+          c.transport !== 'cli' &&
+          c.profileId === p.id &&
+          c.revision === revision(p) &&
+          c.expires > Date.now() &&
+          same(c.host, host),
+      )
+      .reverse();
+    for (const [key, c] of candidates) {
+      const running = await this.pair(c.child.pid).then(
+        (pair) => same(pair, { child: c.child, host: c.host }),
+        () => false,
+      );
+      // Reread: a disconnect can complete during the process checks.
+      const s = this.read();
+      if (running && s.credentials[key] && !s.disconnected?.[addressKey(address)]) {
+        this.binding(p, address);
+        return;
+      }
+    }
   }
   private async authorized(token: string, value: unknown) {
     const e = parse(evidenceSchema, value),

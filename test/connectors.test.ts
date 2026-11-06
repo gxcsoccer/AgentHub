@@ -487,6 +487,38 @@ test('SessionStart binds only a host with a running helper and never revives a d
   assert.deepEqual(await bound(), before);
 });
 
+test('SessionStart does not bind for a helper that is gone or replaced', async (t) => {
+  const f = await fixture(t);
+  const worker = f.rows.get(f.a.sessionId)!;
+  await f.service.enroll(token, f.ea);
+  const clear = async () => {
+    const fresh = { ...f.a, sessionId: randomUUID() };
+    f.rows.clear();
+    f.rows.set(fresh.sessionId, { ...worker, address: fresh });
+    const result = await f.service.hook(token, {
+      pid: 10003,
+      event: 'SessionStart',
+      sessionId: fresh.sessionId,
+    });
+    assert.equal(result.accepted, true);
+    const { bindings } = await f.service.connections();
+    return bindings.some((b) => b.address.sessionId === fresh.sessionId);
+  };
+  const helper = f.processes.get(10001)!;
+
+  f.processes.delete(10001);
+  assert.equal(await clear(), false, 'exited');
+
+  f.processes.set(10001, { ...helper, start: 'reused-pid' });
+  assert.equal(await clear(), false, 'PID reused');
+
+  f.processes.set(10001, { ...helper, ppid: 20002 });
+  assert.equal(await clear(), false, 'different parent');
+
+  f.processes.set(10001, helper);
+  assert.equal(await clear(), true, 'still running');
+});
+
 test('capacity reclaims stale bindings and ended hooks first, then the oldest, and only the excess', async (t) => {
   const f = await fixture(t);
   const c = await f.service.enroll(token, f.ea);
