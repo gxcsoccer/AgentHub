@@ -453,6 +453,40 @@ test('disabled reply routes and corrupt or saturated registries are explicit fai
   assert.throws(() => new ConnectorService(f.hub, f.profiles), /refusing recovery/);
 });
 
+test('SessionStart binds only a host with a running helper and never revives a disconnect', async (t) => {
+  const f = await fixture(t);
+  const bound = async () =>
+    (await f.service.connections()).bindings.map((b) => b.address.sessionId);
+  const start = (sessionId: string) =>
+    f.service.hook(token, { pid: 10003, event: 'SessionStart', sessionId });
+
+  await start(f.a.sessionId);
+  assert.deepEqual(await bound(), [], 'hook alone proves nothing about MCP');
+
+  await f.service.enroll(token, f.ea);
+  const fresh = { ...f.a, sessionId: randomUUID() };
+  f.rows.set(fresh.sessionId, { ...f.rows.get(f.a.sessionId)!, address: fresh });
+  f.rows.delete(f.a.sessionId);
+  assert.equal((await start(fresh.sessionId)).accepted, true);
+  assert((await bound()).includes(fresh.sessionId), 'cleared session stays reachable');
+
+  // A disconnected address still gets its lifecycle record, but no binding.
+  await f.service.enroll(token, f.eb);
+  const second = { ...f.b, sessionId: randomUUID() };
+  f.rows.set(second.sessionId, { ...f.rows.get(f.b.sessionId)!, address: second });
+  f.rows.delete(f.b.sessionId);
+  await f.service.disconnect({ address: second });
+  const before = await bound();
+  f.processes.set(10004, { pid: 10004, ppid: 20002, uid: process.getuid!(), start: 'hook' });
+  const accepted = await f.service.hook(token, {
+    pid: 10004,
+    event: 'SessionStart',
+    sessionId: second.sessionId,
+  });
+  assert.equal(accepted.accepted, true);
+  assert.deepEqual(await bound(), before);
+});
+
 test('capacity reclaims stale bindings and ended hooks first, then the oldest, and only the excess', async (t) => {
   const f = await fixture(t);
   const c = await f.service.enroll(token, f.ea);

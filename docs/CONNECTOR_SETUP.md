@@ -105,7 +105,7 @@ Merge lifecycle hooks into Claude settings, preserving existing hooks. `exec` ke
 }
 ```
 
-The first tool call enrolls; subsequent calls recheck native UUID and process identity. Direct parentage, startup `CLAUDE_CODE_SESSION_ID` and the native directory PID must agree. macOS uses `python3 -I` with libproc for microsecond process-start identity; Linux uses `/proc` start ticks, boot ID and effective UID. Linux has deterministic tests only. Real model acceptance covers macOS and Claude 2.1.318. Unsupported or insufficient evidence fails closed.
+The helper enrolls when it starts, without a model turn. It keeps retrying while the Hub is unavailable, and retries for up to two minutes until the native directory lists the session. Every session in the install scope therefore binds at startup; use `disconnect` to remove one. If startup binding stops, the first tool call enrolls. After `/clear`, the `SessionStart` hook binds the new UUID if that host's helper holds an unexpired credential. Otherwise the next tool call does. Calls recheck native UUID and process identity. Direct parentage, startup `CLAUDE_CODE_SESSION_ID` and the native directory PID must agree. macOS uses `python3 -I` with libproc for microsecond process-start identity; Linux uses `/proc` start ticks, boot ID and effective UID. Linux has deterministic tests only. Real model acceptance covers macOS and Claude 2.1.318. Unsupported or insufficient evidence fails closed.
 
 ## Tools and diagnostics
 

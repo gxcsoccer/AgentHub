@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Bind Claude MCP sessions when the connector helper starts, instead of on the first tool call, so `connectedPeersOnly` peers can reach a session that hasn't used a tool yet. The helper waits for a Hub that isn't up, and retries for up to two minutes until the native directory lists the session. Every session in a connector's install scope now becomes a connected peer at startup. Use `disconnect` to remove one.
+- Rebind on `SessionStart` when that host already has a running helper, so a session stays reachable after `/clear`.
+
 ## 0.4.1 — 2026-11-06
 
 - Add connector profile option `mcpCommand` for Codex, so a host whose install path can change can register a stable launcher. `connect` writes it and compares against it. Without it, behavior is unchanged.

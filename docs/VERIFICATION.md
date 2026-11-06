@@ -1,5 +1,11 @@
 # Verification
 
+## Claude startup binding (unreleased, 2026-11-06)
+
+`npm run smoke:connector -- --run` passed 10 of 10 checks with Claude Code 2.1.318 on macOS. Two real interactive sessions were bound before any tool call, and a session was bound to its new UUID after `/clear`, again before any tool call. The run used `--strict-mcp-config`.
+
+A Hub that starts after the session, and a slow native directory, have only fake-fetch coverage. A session that resumes, MCP servers loaded without `--strict-mcp-config`, and `/clear` after the helper's 24-hour credential expires weren't tested. In the last case, the code leaves the new UUID unbound until the next tool call.
+
 ## 0.4.1 release checks (2026-11-06)
 
 PR #11 is merged. With the package and OpenAPI version set to 0.4.1, `npm run check` passes **276 tests** (207 core, 41 retained bridge, 28 script checks); coverage is **96.56% lines / 88.50% branches / 94.74% functions**. `npm run test:package` passes.

@@ -78,5 +78,12 @@ export function createConnectorMcpServer(client: ConnectorClient) {
 export async function serveConnectorMcp(client: ConnectorClient) {
   const server = createConnectorMcpServer(client);
   await server.connect(new StdioServerTransport());
+  // Stdout carries MCP. The session still binds on its first tool call if this stops.
+  void client
+    .bindAtStartup()
+    .catch((error: unknown) => (error instanceof Error ? error.message : String(error)))
+    .then((refused) => {
+      if (refused) process.stderr.write(`AgentHub startup binding stopped: ${refused}\n`);
+    });
   return server;
 }

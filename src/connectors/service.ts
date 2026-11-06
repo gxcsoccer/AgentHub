@@ -531,7 +531,27 @@ export class ConnectorService {
       seenAt: new Date().toISOString(),
     };
     this.save(s);
+    if (e.event === 'SessionStart') this.rebindHost(p, pair.host, e.sessionId);
     return { accepted: true, stale: false };
+  }
+  /**
+   * `/clear` keeps the MCP helper, which can't see the new UUID until a tool call.
+   * A live credential shows that helper runs on this host. Without one the hook binds
+   * nothing: a session whose MCP never loaded could be asked but could not reply.
+   */
+  private rebindHost(p: ConnectorProfile, host: ProcessIdentity, sessionId: string) {
+    const s = this.read(),
+      address = { harness: p.harness, instance: p.instance, sessionId };
+    const helper = Object.values(s.credentials).some(
+      (c) =>
+        !('harness' in c) &&
+        c.transport !== 'cli' &&
+        c.profileId === p.id &&
+        c.revision === revision(p) &&
+        c.expires > Date.now() &&
+        same(c.host, host),
+    );
+    if (helper && !s.disconnected?.[addressKey(address)]) this.binding(p, address);
   }
   private async authorized(token: string, value: unknown) {
     const e = parse(evidenceSchema, value),
