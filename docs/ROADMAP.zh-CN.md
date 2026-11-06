@@ -2,7 +2,7 @@
 
 [English](ROADMAP.md)
 
-`@gxcsoccer/agenthub@0.4.2` 包含 PR #1–#3、#9、#11 和 #13 的改动，对应 [GitHub Release](https://github.com/gxcsoccer/AgentHub/releases/tag/v0.4.2)。升级要求和能力边界见[变更记录](../CHANGELOG.md)。
+`@gxcsoccer/agenthub@0.4.3` 包含 PR #1–#3、#9、#11、#13 和 #15 的改动，对应 [GitHub Release](https://github.com/gxcsoccer/AgentHub/releases/tag/v0.4.3)。升级要求和能力边界见[变更记录](../CHANGELOG.md)。
 
 | 工作组         | 实现和证据                                                                                                                        | 边界                                                         |
 | -------------- | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
