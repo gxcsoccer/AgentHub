@@ -2,7 +2,7 @@
 
 [简体中文](ROADMAP.zh-CN.md)
 
-The `@gxcsoccer/agenthub@0.4.1` release includes PRs #1–#3, #9 and #11, with matching [GitHub release assets](https://github.com/gxcsoccer/AgentHub/releases/tag/v0.4.1). See the [changelog](../CHANGELOG.md) for upgrade requirements and retained capability boundaries.
+The `@gxcsoccer/agenthub@0.4.2` release includes PRs #1–#3, #9, #11 and #13, with matching [GitHub release assets](https://github.com/gxcsoccer/AgentHub/releases/tag/v0.4.2). See the [changelog](../CHANGELOG.md) for upgrade requirements and retained capability boundaries.
 
 | Work group                    | Implementation and evidence                                                                                                                                         | Boundary                                                                                     |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |

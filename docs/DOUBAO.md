@@ -9,7 +9,7 @@ Use **local stdio MCP** to request work from authorized Claude/Codex sessions an
 Use Node.js 22.13+ and install the release:
 
 ```sh
-npm install -g @gxcsoccer/agenthub@0.4.1
+npm install -g @gxcsoccer/agenthub@0.4.2
 agenthub setup targets --harness claude
 agenthub setup targets --harness codex
 ```

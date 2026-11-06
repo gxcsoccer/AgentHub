@@ -1,9 +1,13 @@
 # Changelog
 
-## Unreleased
+## 0.4.2 — 2026-11-06
 
 - Bind Claude MCP sessions when the connector helper starts, instead of on the first tool call, so `connectedPeersOnly` peers can reach a session that hasn't used a tool yet. The helper waits for a Hub that isn't up, and retries for up to two minutes until the native directory lists the session. Every session in a connector's install scope now becomes a connected peer at startup. Use `disconnect` to remove one.
 - Rebind on `SessionStart` when that host already has a running helper, so a session stays reachable after `/clear`.
+
+Upgrade the Hub and connector processes together. Connector state is unchanged from 0.4.1.
+
+本版让 Claude MCP 会话在连接器 helper 启动时完成绑定，不再等第一次工具调用，因此安装范围内的会话启动后就是已连接对端，可用 `disconnect` 移除。`/clear` 后，若该宿主的 helper 仍在运行，也会绑定新 UUID。Hub 与连接器进程需同步升级。连接器状态与 0.4.1 相同。
 
 ## 0.4.1 — 2026-11-06
 
