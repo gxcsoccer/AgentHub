@@ -8,7 +8,7 @@ The proposed [automatic connections and minimal-awareness collaboration](AGENT_C
 
 - Core: composite session addresses, discovery, detail, history, explicit delivery semantics, idempotency, receipts, bounded event replay, and optional correlated reply forwarding.
 - Codex adapter: existing App Server WebSocket over UDS; external messages use `turn/start.toolOutput`. Reads do not restore sessions. Sends check loaded/root status. Original 22-operation HTTP/SDK interface remains available in the imported Codex Bridge.
-- Claude adapter: read-only `claude agents --json` discovery, native inbox delivery and reverse callback sockets, transcript history including peer `queued_command` attachments. The inbox implementation is experimental and version-gated to 2.1.317 / 2.1.318.
+- Claude adapter: read-only `claude agents --json` discovery, native inbox delivery and reverse callback sockets, transcript history including peer `queued_command` attachments. The inbox implementation is experimental. By default it accepts CLI 2.x from 2.1.317 and marks untested versions as unvalidated.
 - Local service: authenticated loopback HTTP API, fetch client, JSON CLI, and an official-SDK MCP stdio facade. CLI/MCP clients share daemon receipt state; they do not create independent receipt stores on each command.
 - Doubao: local CLI/MCP integration example. OpenAPI managed sessions and MCP Events remain documented adapter plans until credentials and an isolated runtime validation are available.
 

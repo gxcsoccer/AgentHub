@@ -9,7 +9,7 @@ import { homedir } from 'node:os';
 import { once } from 'node:events';
 import { setTimeout as delay } from 'node:timers/promises';
 import { CodexRpc } from '../dist/vendor/codex-bridge/src/rpc.js';
-import { AgentHubClient, codexReplyTool } from '../dist/src/index.js';
+import { AgentHubClient, CLAUDE_NATIVE_VERSIONS, codexReplyTool } from '../dist/src/index.js';
 
 if (!process.argv.includes('--run')) {
   console.log('No live actions performed. Add --run to create isolated recovery-test sessions.');
@@ -148,7 +148,7 @@ const input = (to, delivery, text) => ({
 });
 try {
   const claudeVersion = (await exec('claude', ['--version'])).stdout.trim().split(' ')[0];
-  assert.equal(claudeVersion, '2.1.318');
+  assert(CLAUDE_NATIVE_VERSIONS.includes(claudeVersion));
   report.versions = {
     claude: claudeVersion,
     codex: (await exec('codex', ['--version'])).stdout.trim(),

@@ -135,7 +135,14 @@ function targetChecks(info: SessionInfo, scope: SessionAddress): DiagnosticCheck
             'The native inbox is absent or not owned by this user. Check the target process and instance configuration.',
         };
     }
-  }
+  } else if (metadata.nativeVersionValidated === false)
+    send = {
+      ...send,
+      status: 'warning',
+      code: 'unvalidated_version',
+      message:
+        'This Claude CLI version is allowed but untested. If its private native protocol changed, a message can stay at transport_written with no error.',
+    };
   const reply: DiagnosticCheck = {
     id: 'reply',
     status: 'warning',

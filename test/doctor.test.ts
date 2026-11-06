@@ -166,6 +166,17 @@ test('Claude diagnosis identifies opt-out, unvalidated version and missing inbox
     scope,
     sessionId: 'test',
   });
+  const untested = await fixture({
+    instances: [scope],
+    info: {
+      ...info,
+      metadata: { ...info.metadata, nativeVersionSupported: true, nativeVersionValidated: false },
+    },
+  }).client.doctor({ scope, sessionId: 'test' });
+  const untestedSend = untested.checks.find((x) => x.id === 'send');
+  assert.equal(untestedSend?.status, 'warning');
+  assert.equal(untestedSend?.code, 'unvalidated_version');
+  assert.equal(report.checks.find((x) => x.id === 'send')?.code, 'send_supported');
   assert.equal(report.checks.find((x) => x.id === 'reply')?.code, 'callback_supported');
   assert.equal(report.checks.find((x) => x.id === 'send')?.details?.processVersionVerified, false);
   assert.equal(report.checks.find((x) => x.id === 'send')?.details?.installedCliVersion, '2.1.318');

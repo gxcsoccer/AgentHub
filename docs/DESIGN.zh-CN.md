@@ -8,7 +8,7 @@
 
 1. Core：复合会话地址、发现、详情、历史、消息身份、幂等、回执、有界事件和可选关联回复转发。
 2. Codex Adapter：复用原 WebSocket over UDS transport，通过工具输出投递；完整旧 Bridge 独立保留。
-3. Claude Adapter：只读 CLI 发现、原生 inbox 与反向回调、本地日志历史。原生协议按 CLI 2.1.317 / 2.1.318 显式开启。
+3. Claude Adapter：只读 CLI 发现、原生 inbox 与反向回调、本地日志历史。原生协议需显式开启，默认接受 2.x 且不低于 2.1.317 的 CLI；未实测版本标记为未验证。
 4. 接入层：本地 HTTP/SSE、fetch SDK、JSON CLI、官方 SDK 的 MCP stdio 服务。CLI/MCP 共用守护进程的回执。
 5. 豆包：先提供本地 CLI/MCP 入口和配置说明。OpenAPI 管理会话及 MCP Events 保留为后续适配方向。
 

@@ -48,7 +48,7 @@ Prepare a private JSON array naming installed executable paths:
 npm run smoke:compatibility -- --run --config /absolute/path/to/matrix.json
 ```
 
-Each row starts its own App Server and runs the native message fault matrix: idle/busy, hold/refuse, duplicates/conflicts, delayed replies, disconnect, history identity and owned-session cleanup. Selecting a binary does not bypass AgentHub's version gate. An unvalidated version must fail. The tested Claude allowlist remains explicit; installed-CLI checks cannot establish every running process's version. Metadata and native submission evidence use `installedCliVersion`, `versionSource: installed_cli_cached` and `processVersionVerified: false`; `cliVersion` remains a compatibility alias for the installed version.
+Each row starts its own App Server and runs the native message fault matrix: idle/busy, hold/refuse, duplicates/conflicts, delayed replies, disconnect, history identity and owned-session cleanup. Selecting a binary does not bypass the runtime version gate. At runtime, Claude defaults to accepting 2.x from 2.1.317 and marks untested versions as unvalidated. These acceptance scripts are stricter: the isolated, compatibility and recovery smokes fail on any Claude version outside the explicit tested list, so a version joins that list only after a real run. Installed-CLI checks cannot establish every running process's version. Metadata and native submission evidence use `installedCliVersion`, `versionSource: installed_cli_cached` and `processVersionVerified: false`; `cliVersion` remains a compatibility alias for the installed version.
 
 ## Sustained synthetic load
 

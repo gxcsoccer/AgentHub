@@ -48,7 +48,7 @@ npm run smoke:claude-initiated -- --run
 npm run smoke:compatibility -- --run --config /absolute/path/to/matrix.json
 ```
 
-每一行使用独立 App Server，执行空闲／忙碌、hold／refuse、重复／冲突、迟到回复、断线、历史身份与测试会话清理等矩阵。选择可执行文件不会绕过版本门禁；未验证版本必须拒绝发送。Claude 仍采用明确版本白名单，安装的 CLI 版本不能证明所有运行中进程的版本。metadata 和原生提交证据明确使用 `installedCliVersion`、`versionSource: installed_cli_cached`、`processVersionVerified: false`；`cliVersion` 作为安装版本的兼容别名保留。
+每一行使用独立 App Server，执行空闲／忙碌、hold／refuse、重复／冲突、迟到回复、断线、历史身份与测试会话清理等矩阵。选择可执行文件不会绕过运行时版本门禁。运行时，Claude 默认接受 2.x 且不低于 2.1.317 的版本，并把未实测版本标记为未验证。这些验收脚本更严格：隔离、兼容性和恢复 smoke 遇到明确实测列表之外的 Claude 版本都会失败，所以版本只有真实运行后才能进入列表。安装的 CLI 版本不能证明所有运行中进程的版本。metadata 和原生提交证据明确使用 `installedCliVersion`、`versionSource: installed_cli_cached`、`processVersionVerified: false`；`cliVersion` 作为安装版本的兼容别名保留。
 
 ## 持续合成负载
 
