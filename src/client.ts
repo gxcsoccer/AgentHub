@@ -26,9 +26,24 @@ export class HubApiError extends Error {
     this.name = 'HubApiError';
   }
 }
-/** The request never got an HTTP response, so the Hub neither accepted nor refused it. */
-export const hubUnreachable = (error: unknown) =>
-  error instanceof TypeError || (error as Error | undefined)?.name === 'TimeoutError';
+const CONNECTION_FAILURES = new Set([
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'EHOSTUNREACH',
+  'ENETUNREACH',
+  'ETIMEDOUT',
+  'UND_ERR_CONNECT_TIMEOUT',
+]);
+/**
+ * True only when the connection failed or timed out. Undici reports redirects as
+ * `fetch failed` too, and a bad header or a cut-off body is also a TypeError.
+ */
+export const hubUnreachable = (error: unknown) => {
+  if (!(error instanceof Error)) return false;
+  if (error.name === 'TimeoutError') return true;
+  const code = (error.cause as { code?: string } | undefined)?.code;
+  return error.message === 'fetch failed' && CONNECTION_FAILURES.has(code ?? '');
+};
 export class AgentHubClient {
   private readonly base: URL;
   constructor(
@@ -75,7 +90,11 @@ export class AgentHubClient {
       redirect: 'error',
       signal: AbortSignal.timeout(this.options.timeoutMs ?? 70000),
     });
-    const value = (await response.json()) as { error?: { code: string; message: string } };
+    // An HTTP error stays one even if its body is unreadable.
+    const value = (await response.json().catch((error: unknown) => {
+      if (response.ok) throw error;
+      return {};
+    })) as { error?: { code: string; message: string } };
     if (!response.ok)
       throw new HubApiError(
         response.status,

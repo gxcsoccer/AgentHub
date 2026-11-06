@@ -260,6 +260,8 @@ test('clear requires fresh lifecycle evidence, retains in-flight address and blo
     f.service.call(ca.token, f.ea, { operation: 'list_peers' }),
     /lifecycle|identity|session/i,
   );
+  // The helper can't recover alone: its evidence still carries the old UUID.
+  await assert.rejects(f.service.enroll(token, f.ea), /Session changed/);
   await f.service.hook(token, { pid: 10003, event: 'SessionStart', sessionId: fresh.sessionId });
   const changed = (await f.service.call(ca.token, f.ea, { operation: 'identity' })) as {
     binding: { bindingId: string; address: SessionAddress };

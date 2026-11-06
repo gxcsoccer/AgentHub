@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- `connector-hook` exits 0 when it can't reach the Hub, with a note on stderr, so a stopped Hub no longer shows a hook error at every Claude session start. A Hub refusal or bad input still exits nonzero. The event is still lost, so after `/clear` during an outage the new UUID binds on the next tool call.
+- `connector-hook` exits 0 when it can't reach the Hub, with a note on stderr, so a stopped Hub no longer shows a hook error at every Claude session start. A Hub refusal or bad input still exits nonzero. The event is still lost. After `/clear` during an outage, tool calls return `identity_pending` until a new `SessionStart` reaches the Hub, for example from another `/clear` or a restarted session.
 
 ## 0.4.2 — 2026-11-06
 

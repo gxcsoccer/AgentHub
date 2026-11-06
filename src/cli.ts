@@ -291,7 +291,7 @@ No session is launched, resumed or interrupted implicitly.`);
       } catch (error) {
         if (!hubUnreachable(error)) throw error;
         // A stopped Hub is normal, and a nonzero exit shows an error at every session
-        // start. The MCP helper waits for the Hub on its own.
+        // start. The MCP helper waits for the Hub on its own, but this event is lost.
         console.error(`AgentHub Hub unreachable, skipped ${event.hook_event_name}`);
       }
     }

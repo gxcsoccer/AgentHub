@@ -245,6 +245,34 @@ test('connector-hook stays quiet when the Hub is unreachable and fails when it r
   const refused = await run(f.baseUrl, 'other');
   assert.equal(refused.code, 1, 'a Hub refusal is still an error');
   assert.match(refused.stderr, /invalid_credential/);
+
+  // Each of these reached a server or never tried to: none means the Hub is down.
+  const answering = async (reply: string) => {
+    const server = createServer((socket) => {
+      socket.on('error', () => {});
+      socket.once('data', () => {
+        socket.write(reply);
+        setTimeout(() => socket.destroy(), 10);
+      });
+    });
+    server.listen(0, '127.0.0.1');
+    await once(server, 'listening');
+    t.after(() => server.close());
+    return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  };
+  const redirected = await run(
+    await answering('HTTP/1.1 302 Found\r\nLocation: /next\r\nContent-Length: 0\r\n\r\n'),
+  );
+  const truncated = await run(
+    await answering('HTTP/1.1 503 Busy\r\nContent-Length: 100\r\n\r\npartial'),
+  );
+  await writeFile(join(dir, 'newline'), 'first\nsecond-'.repeat(4), { mode: 0o600 });
+  const badToken = await run(f.baseUrl, 'newline');
+  for (const [name, result] of Object.entries({ redirected, truncated, badToken })) {
+    assert.equal(result.code, 1, name);
+    assert.doesNotMatch(result.stderr, /unreachable/, name);
+  }
+  assert.match(truncated.stderr, /http_error/);
 });
 
 test('connector profiles require private files, restrict configuration and resolve relative token paths', async (t) => {
@@ -636,7 +664,7 @@ test('startup binding waits out the Hub and native directory, then stops', async
   let attempts = 0;
   const outcomes: (() => Response)[] = [
     () => {
-      throw new TypeError('fetch failed');
+      throw new TypeError('fetch failed', { cause: { code: 'ECONNREFUSED' } });
     },
     () => {
       const error = new Error('timed out');

@@ -104,7 +104,7 @@ agenthub serve --config /ABS/hub.json --access-file /ABS/access.json \
 }
 ```
 
-helper 启动时自行登记，不占用模型轮次。Hub 不可用时持续重试；原生目录尚未列出会话时最多重试两分钟。因此安装范围内的每个会话启动后都会绑定，可用 `disconnect` 移除。启动绑定中止时由首次工具调用登记。`/clear` 后，若该宿主的 helper 仍在运行且持有未过期凭证，`SessionStart` hook 会绑定新 UUID，否则等下一次工具调用。每次调用都重新核对原生 UUID。需要直接子进程关系、启动环境 `CLAUDE_CODE_SESSION_ID` 和原生目录 PID 一致。macOS 使用 `python3 -I` 调用 libproc 获取微秒级进程启动身份；Linux 使用 `/proc` 的启动 tick、boot ID 和有效 UID。Linux 目前只有确定性测试，真实模型验收仅覆盖 macOS + Claude 2.1.318。其他平台或证据不足返回未就绪。
+helper 启动时自行登记，不占用模型轮次。Hub 不可用时持续重试；原生目录尚未列出会话时最多重试两分钟。因此安装范围内的每个会话启动后都会绑定，可用 `disconnect` 移除。启动绑定中止时由首次工具调用登记。`/clear` 后，若该宿主的 helper 仍在运行且持有未过期凭证，`SessionStart` hook 会绑定新 UUID，否则等下一次工具调用，前提是 Hub 收到了这次 `SessionStart`。每次调用都重新核对原生 UUID。需要直接子进程关系、启动环境 `CLAUDE_CODE_SESSION_ID` 和原生目录 PID 一致。macOS 使用 `python3 -I` 调用 libproc 获取微秒级进程启动身份；Linux 使用 `/proc` 的启动 tick、boot ID 和有效 UID。Linux 目前只有确定性测试，真实模型验收仅覆盖 macOS + Claude 2.1.318。其他平台或证据不足返回未就绪。
 
 ## 模型工具与诊断
 
@@ -128,7 +128,7 @@ agenthub connections --url http://127.0.0.1:3211 --token-file /ABS/owner.token
 
 Hub 将绑定、hook 证据和业务 token 的哈希保存在现有 SQLite；正常重启后仍检查进程身份。业务凭证最长 24 小时。登记返回 `expiresAt`，helper 在过期后的下一次操作前刷新缓存凭证。服务端明确返回发送前的 `credential_expired` 时，也允许重新登记并重试一次，保留原消息 ID、载荷和期限。过期凭据哈希保留 60 秒，使已发出的请求即使遇到其他注册表写入，仍能得到明确的过期分类；业务权限在到期时立即失效，这些记录仍计入原有 4096 条上限，宽限期结束后随写入正常清理。撤销授权、未知凭证和网络不确定不会自动重试。更改 profile 的 `epoch` 或 token 后重启 Hub 可撤销旧凭证；授权配置重启后按新 grants 执行，`enabled:false` 禁用该入口。注册表三类记录各上限 4096，满时返回 429；历史绑定/hook 的自动回收尚未实现。内存模式不能跨重启保存登记。
 
-同一 OS 用户是信任边界；这些检查防止误绑定，不隔离同用户恶意进程。`/clear` 后旧请求的回程仍指向旧 UUID，投递失败记录为原请求的 `forwardError`。缺少有效 SessionStart 或原生目录尚未刷新时拒绝调用；目前不自动重放失败 hook。Hub 不可达时 hook 退出 0 并写 stderr，Hub 停止时不会显示启动报错。事件会丢失，所以停机期间的 `/clear` 要到下一次工具调用才绑定。Hub 明确拒绝时仍退出非 0。新的回复在原请求到期时或到期后返回 `request_expired`，不确认接受或转发；已按时接受的相同回复仍可幂等确认。可在发起时指定较长期限，没有独立回程窗口。
+同一 OS 用户是信任边界；这些检查防止误绑定，不隔离同用户恶意进程。`/clear` 后旧请求的回程仍指向旧 UUID，投递失败记录为原请求的 `forwardError`。缺少有效 SessionStart 或原生目录尚未刷新时拒绝调用；目前不自动重放失败 hook。Hub 不可达时 hook 退出 0 并写 stderr，Hub 停止时不会显示启动报错。事件会丢失，helper 也无法自行恢复。停机期间执行 `/clear` 后，工具调用会返回 `identity_pending`，直到新的 `SessionStart` 送达 Hub，例如再次 `/clear` 或重启会话。Hub 明确拒绝时仍退出非 0。新的回复在原请求到期时或到期后返回 `request_expired`，不确认接受或转发；已按时接受的相同回复仍可幂等确认。可在发起时指定较长期限，没有独立回程窗口。
 
 ## 验证
 
