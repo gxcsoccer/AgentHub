@@ -51,7 +51,7 @@ export interface ClaudeOptions {
   discover?: () => Promise<ClaudeSession[]>;
   version?: () => Promise<string>;
   /**
-   * Embedder policy for native messaging. Defaults to the validated versions.
+   * Embedder policy for native messaging. Defaults to `defaultClaudeVersionPolicy`.
    * The installed version is still reported as is.
    */
   supportsNativeVersion?: (version: string) => boolean;
