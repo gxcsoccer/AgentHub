@@ -6,6 +6,7 @@ export {
   ClaudeAdapter,
   CLAUDE_NATIVE_VERSION,
   CLAUDE_NATIVE_VERSIONS,
+  defaultClaudeVersionPolicy,
   type ClaudeOptions,
   type ClaudeSession,
 } from './adapters/claude.js';

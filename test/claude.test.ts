@@ -5,7 +5,7 @@ import { createServer, createConnection } from 'node:net';
 import { mkdtemp, rm, writeFile, mkdir, lstat, readdir, chmod } from 'node:fs/promises';
 import { join } from 'node:path';
 import { once } from 'node:events';
-import { ClaudeAdapter } from '../src/adapters/claude.js';
+import { ClaudeAdapter, defaultClaudeVersionPolicy } from '../src/adapters/claude.js';
 import { readClaudeHistory } from '../src/adapters/claude-history.js';
 import { AgentHub } from '../src/hub.js';
 import type { Json } from '../src/types.js';
@@ -141,7 +141,7 @@ test('validated older installed CLI enables opt-in delivery without claiming tar
   const { hub, adapter, input } = await fixture(t, 'accept', '2.1.317');
   const info = await adapter.getSession(input.to);
   assert.deepEqual(info.capabilities.send, ['peer_message']);
-  assert.deepEqual(info.metadata?.validatedCliVersions, ['2.1.317', '2.1.318']);
+  assert.deepEqual(info.metadata?.validatedCliVersions, ['2.1.317', '2.1.318', '2.1.319']);
   assert.equal(info.metadata?.installedCliVersion, '2.1.317');
   assert.equal(info.metadata?.processVersionVerified, false);
   const receipt = await hub.send(input);
@@ -168,7 +168,7 @@ test('native sends require opt-in and the validated version', async (t) => {
         expiresAt: new Date(Date.now() + 10000).toISOString(),
         hopCount: 0,
       }),
-      /opt-in|validated only/,
+      /opt-in|version policy/,
     );
     await adapter.close();
   }
@@ -434,4 +434,40 @@ test('an embedder version policy enables delivery while the real version stays v
   const refused = adapter(false);
   t.after(() => refused.close());
   assert.deepEqual((await refused.getSession(address)).capabilities.send, []);
+});
+
+test('default version policy accepts later 2.x releases and marks them unvalidated', async (t) => {
+  for (const [version, allowed] of [
+    ['2.1.316', false],
+    ['2.0.999', false],
+    ['1.9.999', false],
+    ['3.0.0', false],
+    ['2.1.319-beta.1', false],
+    ['unknown', false],
+    ['2.1.317', true],
+    ['2.1.318', true],
+    ['2.1.320', true],
+    ['2.2.0', true],
+    ['2.0.0', false],
+  ] as const)
+    assert.equal(defaultClaudeVersionPolicy(version), allowed, version);
+
+  const id = randomUUID();
+  const adapter = (version: string) => {
+    const instance = new ClaudeAdapter({
+      nativeMessaging: true,
+      version: async () => version,
+      discover: async () => [{ sessionId: id, pid: process.pid, status: 'idle' }],
+    });
+    t.after(() => instance.close());
+    return instance;
+  };
+  const address = { harness: 'claude', instance: 'local', sessionId: id };
+  const later = await adapter('2.1.999').getSession(address);
+  assert.equal(later.metadata?.nativeVersionSupported, true);
+  assert.equal(later.metadata?.nativeVersionValidated, false);
+  const tested = await adapter('2.1.318').getSession(address);
+  assert.equal(tested.metadata?.nativeVersionValidated, true);
+  const major = await adapter('3.0.0').getSession(address);
+  assert.equal(major.metadata?.nativeVersionSupported, false);
 });

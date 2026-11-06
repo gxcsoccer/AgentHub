@@ -97,7 +97,7 @@ async function main() {
 
 Clients: --url http://127.0.0.1:3211 --token-file FILE
 Environment: AGENTHUB_URL, AGENTHUB_TOKEN, AGENTHUB_TOKEN_FILE, AGENTHUB_STATE_FILE
-Claude native sends require nativeMessaging:true in the config and CLI 2.1.318.
+Claude native sends require nativeMessaging:true in the config and CLI 2.x from 2.1.317.
 Receipts persist by default beside the token file (state.sqlite). Node >=22.13 required.
 attach-reply explicitly uses thread/resume after a loaded check; a concurrent unload may resume it.
 JSON goes to stdout. Agent-facing MCP never exposes attach or approval operations.

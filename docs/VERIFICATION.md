@@ -1,5 +1,11 @@
 # Verification
 
+## Claude version policy (unreleased, 2026-11-06)
+
+With real Claude Code 2.1.319 on macOS and the default policy, `npm run smoke:connector -- --run` passed 10 of 10 and `npm run smoke:isolated -- --run` finished passed. That covers native delivery, replies and `/clear` on 2.1.319, so it joins the tested versions.
+
+`2.2.x` and later `2.1.x` releases are allowed but haven't been run. Whether a later release keeps the private protocol isn't known until it runs.
+
 ## 0.4.3 release checks (2026-11-06)
 
 PR #15 is merged. With the package and OpenAPI version set to 0.4.3, `npm run check` passes **280 tests** (211 core, 41 retained bridge, 28 script checks); coverage is **96.97% lines / 88.47% branches / 94.83% functions**. `npm run test:package` passes.
