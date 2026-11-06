@@ -4,6 +4,8 @@ import { randomUUID } from 'node:crypto';
 import { mkdtemp, writeFile, rm, chmod } from 'node:fs/promises';
 import { join } from 'node:path';
 import { once } from 'node:events';
+import { createServer } from 'node:net';
+import type { AddressInfo } from 'node:net';
 import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { Client } from '@modelcontextprotocol/client';
@@ -207,6 +209,42 @@ test('bound MCP CLI exposes exactly three tools and executes ask/reply through H
     `import {spawn} from 'node:child_process';const c=spawn(process.execPath,${JSON.stringify([cli, 'connector-hook', '--connector-profile', profile])},{stdio:['pipe','inherit','inherit']});c.stdin.end(${JSON.stringify(JSON.stringify({ hook_event_name: 'SessionStart', session_id: f.a.sessionId }))});c.on('exit',code=>process.exitCode=code);`,
   ]);
   assert.equal(JSON.parse(hook.stdout).accepted, true);
+});
+
+test('connector-hook stays quiet when the Hub is unreachable and fails when it refuses', async (t) => {
+  const f = await setup(t),
+    dir = await mkdtemp('/tmp/ah-connector-hook-');
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  await writeFile(join(dir, 'enrollment'), token, { mode: 0o600 });
+  const closed = createServer();
+  closed.listen(0, '127.0.0.1');
+  await once(closed, 'listening');
+  const port = (closed.address() as AddressInfo).port;
+  closed.close();
+  await once(closed, 'close');
+  const run = async (url: string, enrollment = 'enrollment') => {
+    const profile = join(dir, 'profile.json');
+    await writeFile(profile, JSON.stringify({ url, enrollmentTokenFile: enrollment }), {
+      mode: 0o600,
+    });
+    const child = spawn(process.execPath, [cli, 'connector-hook', '--connector-profile', profile]);
+    let stdout = '',
+      stderr = '';
+    child.stdout.on('data', (chunk) => (stdout += chunk));
+    child.stderr.on('data', (chunk) => (stderr += chunk));
+    child.stdin.end(JSON.stringify({ hook_event_name: 'SessionStart', session_id: f.a.sessionId }));
+    const [code] = await once(child, 'exit');
+    return { code, stdout, stderr };
+  };
+  const down = await run(`http://127.0.0.1:${port}`);
+  assert.equal(down.code, 0, down.stderr);
+  assert.equal(down.stdout, '', 'hook stdout reaches the model');
+  assert.match(down.stderr, /unreachable/);
+
+  await writeFile(join(dir, 'other'), 'x'.repeat(48), { mode: 0o600 });
+  const refused = await run(f.baseUrl, 'other');
+  assert.equal(refused.code, 1, 'a Hub refusal is still an error');
+  assert.match(refused.stderr, /invalid_credential/);
 });
 
 test('connector profiles require private files, restrict configuration and resolve relative token paths', async (t) => {

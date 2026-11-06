@@ -26,6 +26,9 @@ export class HubApiError extends Error {
     this.name = 'HubApiError';
   }
 }
+/** The request never got an HTTP response, so the Hub neither accepted nor refused it. */
+export const hubUnreachable = (error: unknown) =>
+  error instanceof TypeError || (error as Error | undefined)?.name === 'TimeoutError';
 export class AgentHubClient {
   private readonly base: URL;
   constructor(
