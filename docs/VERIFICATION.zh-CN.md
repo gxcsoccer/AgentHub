@@ -1,18 +1,14 @@
 # 验证说明
 
-## Claude 版本策略（未发布，2026-11-06）
-
-在 macOS、真实 Claude Code 2.1.319 和默认策略下，`npm run smoke:connector -- --run` 通过全部 10 项，`npm run smoke:isolated -- --run` 结果为通过。这覆盖了 2.1.319 的原生投递、回复和 `/clear`，因此把它加入已实测版本。
-
-`2.2.x` 和之后的 `2.1.x` 会被放行，但没有运行过。后续版本是否保持这套私有协议，要实际运行后才知道。
-
 ## 0.4.3 发布检查（2026-11-06）
 
-PR #15 已合并。包和 OpenAPI 版本设为 0.4.3 后，`npm run check` 通过 **280 项测试**（核心 211、保留 Bridge 41、脚本 28），覆盖率为**行 96.97%、分支 88.47%、函数 94.83%**。`npm run test:package` 通过。
+PR #15 和 #17 已合并。包和 OpenAPI 版本设为 0.4.3 后，`npm run check` 通过 **281 项测试**（核心 212、保留 Bridge 41、脚本 28），覆盖率为**行 96.97%、分支 88.58%、函数 94.84%**。`npm run test:package` 通过。
 
-将 Claude Code 固定为 2.1.318 时，`npm run smoke:connector -- --run` 通过全部 10 项。同样的运行在 2.1.319 上失败，该版本当天在本机自动升级：`ask_agent` 返回 `Peer name is missing or ambiguous`。2.1.319 不在已验证版本列表中，所以该会话默认不提供 `peer_message`。启动绑定的检查已通过。2.1.319 尚未验证。
+在 `b3b9044` 上，使用 macOS、真实 Claude Code 2.1.319 和默认策略，`npm run smoke:connector -- --run` 通过全部 10 项，`npm run smoke:isolated -- --run` 结果为通过。这覆盖了 2.1.319 的原生投递、回复和 `/clear`，因此把它加入已实测版本。
 
-未在真实 Claude 会话中检查 Hub 停止时的启动界面。
+发版期间本机 Claude 自动升级到 2.1.319。PR #17 之前，同样的连接器 smoke 在该版本上失败：`ask_agent` 返回 `Peer name is missing or ambiguous`，因为版本未被接受，会话没有提供 `peer_message`。
+
+`2.2.x` 和之后的 `2.1.x` 会被放行，但没有运行过。后续版本是否保持这套私有协议，要实际运行后才知道。未在真实 Claude 会话中检查 Hub 停止时的启动界面。
 
 ## 0.4.2 发布检查（2026-11-06）
 
