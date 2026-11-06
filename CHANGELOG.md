@@ -1,8 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.4.3 — 2026-11-06
 
 - `connector-hook` exits 0 when it can't reach the Hub, with a note on stderr, so a stopped Hub no longer shows a hook error at every Claude session start. A Hub refusal or bad input still exits nonzero. The event is still lost. After `/clear` during an outage, tool calls return `identity_pending` until a new `SessionStart` reaches the Hub, for example from another `/clear` or a restarted session.
+
+Connector state is unchanged from 0.4.2.
+
+本版让 `connector-hook` 在连不上 Hub 时退出 0 并写 stderr，Hub 停止时 Claude 启动界面不再报错。Hub 明确拒绝或配置错误时仍退出非 0。事件仍会丢失：停机期间 `/clear` 后，需要新的 `SessionStart` 送达 Hub 才能恢复。连接器状态与 0.4.2 相同。
 
 ## 0.4.2 — 2026-11-06
 

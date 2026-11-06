@@ -1,5 +1,13 @@
 # Verification
 
+## 0.4.3 release checks (2026-11-06)
+
+PR #15 is merged. With the package and OpenAPI version set to 0.4.3, `npm run check` passes **280 tests** (211 core, 41 retained bridge, 28 script checks); coverage is **96.97% lines / 88.47% branches / 94.83% functions**. `npm run test:package` passes.
+
+`npm run smoke:connector -- --run` passed 10 of 10 with Claude Code pinned to 2.1.318. The same run failed with 2.1.319, which auto-updated on this machine that day: `ask_agent` returned `Peer name is missing or ambiguous`. 2.1.319 isn't in the validated version list, so that session doesn't offer `peer_message` by default. The startup binding checks had passed. 2.1.319 isn't validated.
+
+The startup screen wasn't checked in a real Claude session with a stopped Hub.
+
 ## 0.4.2 release checks (2026-11-06)
 
 PR #13 is merged. With the package and OpenAPI version set to 0.4.2, `npm run check` passes **279 tests** (210 core, 41 retained bridge, 28 script checks); coverage is **97.01% lines / 88.75% branches / 94.82% functions**. `npm run test:package` passes.
