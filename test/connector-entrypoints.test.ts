@@ -152,6 +152,13 @@ test('bound MCP CLI exposes exactly three tools and executes ask/reply through H
   const mcp = new Client({ name: 'test', version: '1' });
   t.after(() => mcp.close());
   await mcp.connect(transport);
+  // Bound by the helper itself: no tool has been called yet.
+  for (let i = 0; i < 200 && !(await f.service.connections()).bindings.length; i++)
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  assert.deepEqual(
+    (await f.service.connections()).bindings.map((b) => b.address),
+    [f.a],
+  );
   const tools = await mcp.listTools();
   assert.deepEqual(tools.tools.map((t) => t.name).sort(), [
     'ask_agent',
@@ -570,5 +577,88 @@ test('serve CLI loads connector profiles with restricted access and rejects cred
       timeout: 10000,
     }),
     /must differ/,
+  );
+});
+
+test('startup binding waits out the Hub and native directory, then stops', async (t) => {
+  // Retry timers are unref'd, and the fake fetch holds nothing else open.
+  const alive = setInterval(() => {}, 1000);
+  t.after(() => clearInterval(alive));
+  const startup = (fake: typeof fetch, extra = {}) =>
+    new ConnectorClient({
+      baseUrl: 'http://localhost:3211',
+      enrollmentToken: token,
+      evidence: { pid: 10001, startupSessionId: randomUUID() },
+      fetch: fake,
+      startupRetryMs: 1,
+      ...extra,
+    });
+  const refused = (code: string, status: number) =>
+    Response.json({ error: { code, message: code } }, { status });
+  let attempts = 0;
+  const outcomes: (() => Response)[] = [
+    () => {
+      throw new TypeError('fetch failed');
+    },
+    () => {
+      const error = new Error('timed out');
+      error.name = 'TimeoutError';
+      throw error;
+    },
+    () => refused('storage_failed', 503),
+    () => refused('identity_pending', 409),
+    () => Response.json({ token: 'business-'.repeat(8), binding: {} }),
+  ];
+  const recovering = startup(async () => outcomes[attempts++]!());
+  assert.equal(await recovering.bindAtStartup(), undefined);
+  assert.equal(attempts, 5);
+
+  // A bound helper reuses the credential: the first tool call doesn't enroll again.
+  const calls: string[] = [];
+  const reused = startup(async (url) => {
+    calls.push(String(url));
+    return String(url).endsWith('/enroll')
+      ? Response.json({ token: 'business-'.repeat(8), binding: {} })
+      : Response.json({ ok: true });
+  });
+  await reused.bindAtStartup();
+  await reused.listPeers();
+  assert.equal(calls.filter((url) => url.endsWith('/enroll')).length, 1);
+
+  for (const [code, status] of [
+    ['connector_disconnected', 403],
+    ['invalid_credential', 401],
+    ['identity_unavailable', 409],
+    ['connector_capacity', 429],
+  ] as const) {
+    let tries = 0;
+    const final = startup(async () => {
+      tries++;
+      return refused(code, status);
+    });
+    assert.equal(await final.bindAtStartup(), code);
+    assert.equal(tries, 1, code);
+  }
+
+  let pending = 0;
+  const bounded = startup(
+    async () => {
+      pending++;
+      return refused('identity_pending', 409);
+    },
+    { startupIdentityMs: 40 },
+  );
+  assert.equal(await bounded.bindAtStartup(), 'identity_pending');
+  assert(pending > 1);
+
+  // None of these can enroll without per-call metadata or a live handshake.
+  const untouched: typeof fetch = async () => assert.fail('must not enroll');
+  assert.equal(await startup(untouched, { harness: 'codex' }).bindAtStartup(), undefined);
+  assert.equal(await startup(untouched, { transport: 'cli' }).bindAtStartup(), undefined);
+  assert.equal(
+    await startup(untouched, {
+      evidence: { pid: 10001, startupSessionId: '' },
+    }).bindAtStartup(),
+    undefined,
   );
 });

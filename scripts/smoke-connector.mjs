@@ -219,8 +219,15 @@ try {
       45000,
     );
     await idle(i);
+    await until(
+      async () =>
+        (await service.connections()).bindings.some((b) => b.address.sessionId === ids[i]),
+      'binding before any tool call',
+      30000,
+    );
     await turn(i, 'Call list_peers once. Then say DONE_TEST.');
   }
+  check('sessions_bind_at_startup_before_any_tool_call');
   const initial = await service.connections();
   assert.equal(initial.bindings.length, 2);
   check('two_real_claude_mcp_processes_enrolled', {
@@ -321,10 +328,13 @@ try {
     20000,
   );
   assert.equal(fresh.pid, old.pid);
-  await turn(0, 'Call list_peers once. Then say DONE_TEST.');
-  assert(
-    (await service.connections()).bindings.some((b) => b.address.sessionId === fresh.sessionId),
+  await until(
+    async () =>
+      (await service.connections()).bindings.some((b) => b.address.sessionId === fresh.sessionId),
+    'binding after clear before any tool call',
+    20000,
   );
+  await turn(0, 'Call list_peers once. Then say DONE_TEST.');
   check('clear_refreshes_binding_via_real_session_start_hook', {
     oldSession: old.sessionId,
     newSession: fresh.sessionId,
